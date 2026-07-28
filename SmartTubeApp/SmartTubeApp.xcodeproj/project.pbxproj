@@ -567,7 +567,7 @@
 				2BAA25ED5DBB8F5241B0AA13 /* Frameworks */,
 				058A178EA117F7F7EA83573C /* Embed Foundation Extensions */,
 				FFDDBB9900112233445566AA /* Copy Firebase Binary dSYMs */,
-				67F34A972FA0A6A200EA6054 /* ShellScript */,
+				67F34A972FA0A6A200EA6054 /* Upload Crashlytics dSYMs */,
 			);
 			buildRules = (
 			);
@@ -611,7 +611,7 @@
 				67E6B6772F9535CD00CD372F /* Sources */,
 				67E6B6782F9535CD00CD372F /* Frameworks */,
 				67E6B6792F9535CD00CD372F /* Resources */,
-				674707572FB7AD00005095A5 /* ShellScript */,
+				674707572FB7AD00005095A5 /* Upload Crashlytics dSYMs */,
 			);
 			buildRules = (
 			);
@@ -781,7 +781,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		674707572FB7AD00005095A5 /* ShellScript */ = {
+		674707572FB7AD00005095A5 /* Upload Crashlytics dSYMs */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -792,15 +792,16 @@
 				"$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Resources/DWARF/$(TARGET_NAME)",
 				"$(SRCROOT)/$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
 			);
+			name = "Upload Crashlytics dSYMs";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${BUILD_DIR%Build/*}SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\" -gsp \"${SRCROOT}/SmartTubeApp/GoogleService-Info.plist\"\n";
+			shellScript = "CRASHLYTICS_RUN=\"${BUILD_DIR%Build/*}SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\nGSP=\"${SRCROOT}/Smart Tube/GoogleService-Info.plist\"\nif [ ! -x \"$CRASHLYTICS_RUN\" ]; then\n    echo \"error: Crashlytics run script not found at $CRASHLYTICS_RUN -- did package resolution succeed?\" >&2\n    exit 1\nfi\nif [ ! -f \"$GSP\" ]; then\n    echo \"error: $GSP is missing (see ci_scripts/ci_post_clone.sh)\" >&2\n    exit 1\nfi\n\"$CRASHLYTICS_RUN\" -gsp \"$GSP\"\n";
 		};
-		67F34A972FA0A6A200EA6054 /* ShellScript */ = {
+		67F34A972FA0A6A200EA6054 /* Upload Crashlytics dSYMs */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -811,13 +812,14 @@
 				"$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Resources/DWARF/$(TARGET_NAME)",
 				"$(SRCROOT)/$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
 			);
+			name = "Upload Crashlytics dSYMs";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${BUILD_DIR%Build/*}SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\" -gsp \"${SRCROOT}/SmartTubeApp/GoogleService-Info.plist\"\n";
+			shellScript = "CRASHLYTICS_RUN=\"${BUILD_DIR%Build/*}SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\nGSP=\"${SRCROOT}/SmartTubeApp/GoogleService-Info.plist\"\nif [ ! -x \"$CRASHLYTICS_RUN\" ]; then\n    echo \"error: Crashlytics run script not found at $CRASHLYTICS_RUN -- did package resolution succeed?\" >&2\n    exit 1\nfi\nif [ ! -f \"$GSP\" ]; then\n    echo \"error: $GSP is missing (see ci_scripts/ci_post_clone.sh)\" >&2\n    exit 1\nfi\n\"$CRASHLYTICS_RUN\" -gsp \"$GSP\"\n";
 		};
 		FFDDBB9900112233445566AA /* Copy Firebase Binary dSYMs */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1017,7 +1019,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = SmartTubeApp/SmartTubeApp.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "SmartTubeApp/SmartTubeApp-macOS.entitlements";
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
@@ -1194,7 +1196,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CODE_SIGN_ENTITLEMENTS = SafariExtension/SmartTubeSafariExtension.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 5A4JA438MW;
@@ -1240,7 +1242,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CODE_SIGN_ENTITLEMENTS = SafariExtension/SmartTubeSafariExtension.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 5A4JA438MW;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -1283,10 +1285,8 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=appletvos*]" = 5A4JA438MW;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 5A4JA438MW;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1308,7 +1308,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.void.smarttube.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = "Smart Tube TV";
 				SDKROOT = appletvos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
@@ -1328,10 +1327,8 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=appletvos*]" = 5A4JA438MW;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 5A4JA438MW;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1349,7 +1346,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.void.smarttube.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = "Smart Tube TV";
 				SDKROOT = appletvos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
@@ -1366,7 +1362,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 5A4JA438MW;
 				INFOPLIST_FILE = DownloadWidget/Info.plist;
@@ -1391,7 +1387,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 5A4JA438MW;
 				INFOPLIST_FILE = DownloadWidget/Info.plist;
@@ -1446,7 +1442,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/SmartTubeShareExtension.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 5A4JA438MW;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
@@ -1471,7 +1467,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/SmartTubeShareExtension.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 5A4JA438MW;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
@@ -1499,7 +1495,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = SmartTubeApp/SmartTubeApp.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "SmartTubeApp/SmartTubeApp-macOS.entitlements";
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
@@ -1691,6 +1687,7 @@
 		};
 		B8401470D9A590E7F3685830 /* SmartTubeIOS */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../SmartTubeIOS" */;
 			productName = SmartTubeIOS;
 		};
 /* End XCSwiftPackageProductDependency section */

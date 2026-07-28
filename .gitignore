@@ -20,14 +20,17 @@ DerivedData/
 # Swift Package Manager
 .build/
 .swiftpm/xcode/
-*.resolved
-# Keep Package.resolved when using SPM directly:
-# !Package.resolved
+# Package.resolved IS committed on purpose. Xcode Cloud turns off automatic
+# package resolution and builds only from the checked-in lockfile, so leaving
+# it untracked makes every CI build resolve a different Firebase 12.x.
+# See docs/xcode-cloud.md.
 
 # CocoaPods
 Pods/
-*.xcworkspace/
-!*.xcworkspace/contents.xcworkspacedata
+
+# The .xcworkspace bundles are part of the project (they carry the shared
+# schemes and the swiftpm lockfile). Only per-user state is ignored, and the
+# `xcuserdata/` + `*.xcuserstate` rules above already cover that at any depth.
 
 # Fastlane
 fastlane/report.xml

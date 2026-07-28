@@ -102,16 +102,20 @@ open SmartTube.xcworkspace
 
 ### Signing
 
-The project requires an Apple Developer Team ID and a Firebase `GoogleService-Info.plist` to build.  
-Copy `SmartTubeApp/Config/Secrets.xcconfig.example` to `SmartTubeApp/Config/Secrets.xcconfig` and fill in your Team ID:
+The project requires an Apple Developer Team ID and a Firebase `GoogleService-Info.plist` to build.
 
-```
-DEVELOPMENT_TEAM = YOUR_TEAM_ID
-SMARTTUBE_TV_TEAM = YOUR_TEAM_ID
-```
+The Team ID is currently hardcoded in `project.pbxproj` — set your own via Xcode's
+Signing & Capabilities tab for each target. (`SmartTubeApp/Config/Secrets.xcconfig.example`
+is not wired into the project: there is no `baseConfigurationReference`, so copying it has no effect.)
 
 Add your own `GoogleService-Info.plist` to `SmartTubeApp/SmartTubeApp/` (create a free Firebase project at [console.firebase.google.com](https://console.firebase.google.com) — only Analytics and Crashlytics are used).  
-Both files are gitignored and will never be committed.
+That path is gitignored. Note that the tvOS target's copy at `SmartTubeApp/Smart Tube/GoogleService-Info.plist` **is** committed.
+
+### Continuous integration
+
+See [docs/xcode-cloud.md](docs/xcode-cloud.md) for Xcode Cloud setup, including the
+required `Package.resolved` lockfile and the `GOOGLE_SERVICE_INFO_PLIST_BASE64`
+workflow variable consumed by `ci_scripts/ci_post_clone.sh`.
 
 ---
 

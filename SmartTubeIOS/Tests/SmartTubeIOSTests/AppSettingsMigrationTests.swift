@@ -85,6 +85,11 @@ struct AppSettingsMigrationTests {
 
         // Missing field must decode to 0 (the pre-migration sentinel)
         #expect(settings.settingsVersion == 0, "Old JSON without settingsVersion should decode as 0 (migration sentinel), not fail")
+
+        // remoteControlStyle was added after this JSON was written — an install that
+        // upgrades must land on .automatic, which reproduces the old Now Playing
+        // behaviour rather than silently changing the Lock Screen buttons.
+        #expect(settings.remoteControlStyle == .automatic)
     }
 
     // MARK: - Type-mismatched field → default for that field, others preserved
@@ -155,6 +160,7 @@ struct AppSettingsMigrationTests {
         original.seekBackSeconds = 20
         original.seekForwardSeconds = 60
         original.controlsHideTimeout = 8
+        original.remoteControlStyle = .seekInterval
         original.videoGravityMode = .fill
         original.hideShorts = true
         original.themeName = .dark
@@ -175,6 +181,7 @@ struct AppSettingsMigrationTests {
         #expect(decoded.seekBackSeconds == original.seekBackSeconds)
         #expect(decoded.seekForwardSeconds == original.seekForwardSeconds)
         #expect(decoded.controlsHideTimeout == original.controlsHideTimeout)
+        #expect(decoded.remoteControlStyle == original.remoteControlStyle)
         #expect(decoded.videoGravityMode == original.videoGravityMode)
         #expect(decoded.hideShorts == original.hideShorts)
         #expect(decoded.themeName == original.themeName)

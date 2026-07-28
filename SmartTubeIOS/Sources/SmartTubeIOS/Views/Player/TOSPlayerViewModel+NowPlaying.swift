@@ -54,17 +54,17 @@ extension TOSPlayerViewModel {
             if self.playerState == .playing { self.pause() } else { self.play() }
             return .success
         }
-        center.skipForwardCommand.preferredIntervals = [10]
         center.skipForwardCommand.addTarget { [weak self] event in
             guard let self else { return .success }
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval
+                ?? Double(self.settings.seekForwardSeconds)
             self.seekTo(self.currentTime + interval)
             return .success
         }
-        center.skipBackwardCommand.preferredIntervals = [10]
         center.skipBackwardCommand.addTarget { [weak self] event in
             guard let self else { return .success }
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval
+                ?? Double(self.settings.seekBackSeconds)
             self.seekTo(max(0, self.currentTime - interval))
             return .success
         }
@@ -81,6 +81,37 @@ extension TOSPlayerViewModel {
             self?.playPrevious()
             return .success
         }
+
+        applyRemoteControlStyle()
+    }
+
+    /// Enables the command pair the user picked in Settings → Player → Lock Screen
+    /// Controls and disables the other. Mirrors
+    /// `PlaybackViewModel.applyRemoteControlStyle()` — see that method for the
+    /// per-case reasoning.
+    func applyRemoteControlStyle() {
+        let center = MPRemoteCommandCenter.shared()
+
+        switch settings.remoteControlStyle {
+        case .automatic:
+            center.nextTrackCommand.isEnabled     = hasNext
+            center.previousTrackCommand.isEnabled = hasPrevious
+            center.skipForwardCommand.isEnabled   = true
+            center.skipBackwardCommand.isEnabled  = true
+        case .trackSkip:
+            center.nextTrackCommand.isEnabled     = hasNext
+            center.previousTrackCommand.isEnabled = hasPrevious
+            center.skipForwardCommand.isEnabled   = false
+            center.skipBackwardCommand.isEnabled  = false
+        case .seekInterval:
+            center.nextTrackCommand.isEnabled     = false
+            center.previousTrackCommand.isEnabled = false
+            center.skipForwardCommand.isEnabled   = true
+            center.skipBackwardCommand.isEnabled  = true
+        }
+
+        center.skipForwardCommand.preferredIntervals  = [NSNumber(value: settings.seekForwardSeconds)]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: settings.seekBackSeconds)]
     }
 
     func updateNowPlayingInfo() {
@@ -124,9 +155,7 @@ extension TOSPlayerViewModel {
             }
         }
 
-        let center = MPRemoteCommandCenter.shared()
-        center.nextTrackCommand.isEnabled = hasNext
-        center.previousTrackCommand.isEnabled = hasPrevious
+        applyRemoteControlStyle()
 
         setNowPlayingInfo(nowPlayingInfoCache)
     }

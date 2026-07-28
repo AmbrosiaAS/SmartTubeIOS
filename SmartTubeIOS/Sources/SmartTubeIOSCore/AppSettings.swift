@@ -27,6 +27,24 @@ public struct AppSettings: Codable {
     /// Mirrors Android's `PlayerData.controlsHideTimeoutMs`. Default: 4.
     public var controlsHideTimeout: Int
 
+    /// Which pair of buttons the system media controls show either side of play/pause —
+    /// the Lock Screen widget, Control Center, headphone remotes and CarPlay.
+    /// Backs `MPRemoteCommandCenter` command enablement in
+    /// `PlaybackViewModel+NowPlaying` and `TOSPlayerViewModel+NowPlaying`.
+    public enum RemoteControlStyle: String, Codable, CaseIterable, Sendable {
+        /// Next/previous video when one is available, skip buttons otherwise.
+        /// Both command pairs stay registered and iOS picks — the historical behaviour.
+        case automatic    = "automatic"
+        /// Always next/previous video (⏮ ⏭). Skip commands are disabled.
+        case trackSkip    = "trackSkip"
+        /// Always skip back/forward by `seekBackSeconds` / `seekForwardSeconds`
+        /// (⏪15 ⏩15). Next/previous commands are disabled.
+        case seekInterval = "seekInterval"
+    }
+    /// Defaults to `.automatic`, which reproduces the behaviour that shipped before this
+    /// setting existed, so existing installs see no change until they opt in.
+    public var remoteControlStyle: RemoteControlStyle
+
     /// Whether the video should fill the screen (cropping sides) or fit within bounds.
     public enum VideoGravityMode: String, Codable, CaseIterable, Sendable {
         case fit  = "fit"   // resizeAspect — letterbox/pillarbox
@@ -231,6 +249,7 @@ public struct AppSettings: Codable {
         seekBackSeconds      = 10
         seekForwardSeconds   = 30
         controlsHideTimeout  = 4
+        remoteControlStyle   = .automatic
         videoGravityMode     = .fit
         loopEnabled          = false
         shuffleEnabled       = false
@@ -311,6 +330,7 @@ extension AppSettings {
         case seekBackSeconds
         case seekForwardSeconds
         case controlsHideTimeout
+        case remoteControlStyle
         case videoGravityMode
         case loopEnabled
         case shuffleEnabled
@@ -354,6 +374,7 @@ extension AppSettings {
         seekBackSeconds              = c.safeDecode(Int.self,               forKey: .seekBackSeconds,              default: d.seekBackSeconds)
         seekForwardSeconds           = c.safeDecode(Int.self,               forKey: .seekForwardSeconds,           default: d.seekForwardSeconds)
         controlsHideTimeout          = c.safeDecode(Int.self,               forKey: .controlsHideTimeout,         default: d.controlsHideTimeout)
+        remoteControlStyle           = c.safeDecode(RemoteControlStyle.self, forKey: .remoteControlStyle,          default: d.remoteControlStyle)
         videoGravityMode             = c.safeDecode(VideoGravityMode.self,  forKey: .videoGravityMode,             default: d.videoGravityMode)
         loopEnabled                  = c.safeDecode(Bool.self,              forKey: .loopEnabled,                  default: d.loopEnabled)
         shuffleEnabled               = c.safeDecode(Bool.self,              forKey: .shuffleEnabled,               default: d.shuffleEnabled)

@@ -520,6 +520,11 @@ public final class PlaybackViewModel {
     public func updateSettings(_ newSettings: AppSettings) {
         settings = newSettings
         isAudioOnlyMode = newSettings.audioOnlyMode
+        #if canImport(UIKit)
+        // Re-apply so a Lock Screen Controls / seek-interval change made in Settings
+        // takes effect on the already-registered commands without a reload.
+        applyRemoteControlStyle()
+        #endif
     }
 }
 

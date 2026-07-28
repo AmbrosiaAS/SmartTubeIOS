@@ -72,6 +72,113 @@ struct NowPlayingCommandsTests {
         #expect(MPRemoteCommandCenter.shared().previousTrackCommand.isEnabled == true)
     }
 
+    // MARK: - Lock Screen Controls style (settings.remoteControlStyle)
+    //
+    // Settings → Player → Lock Screen Controls picks which command pair the system
+    // media controls expose either side of play/pause. Every case below drives
+    // applyRemoteControlStyle(), which is the single place that decides enablement.
+
+    /// `.automatic` is the default and must keep BOTH pairs live — skip commands
+    /// always enabled, next/previous following queue availability. This is exactly
+    /// what shipped before the setting existed, so upgrading installs see no change.
+    @Test func automaticStyleKeepsBothCommandPairsAvailable() {
+        let vm = PlaybackViewModel()
+        var settings = AppSettings()
+        settings.remoteControlStyle = .automatic
+        vm.updateSettings(settings)
+        vm.setupRemoteCommandCenter()
+
+        vm.hasNext = true
+        vm.hasPrevious = false
+        vm.applyRemoteControlStyle()
+
+        let center = MPRemoteCommandCenter.shared()
+        #expect(center.nextTrackCommand.isEnabled == true)
+        #expect(center.previousTrackCommand.isEnabled == false)
+        #expect(center.skipForwardCommand.isEnabled == true)
+        #expect(center.skipBackwardCommand.isEnabled == true)
+    }
+
+    /// `.trackSkip` — always next/previous video, so the skip commands must be off
+    /// even when a queue exists.
+    @Test func trackSkipStyleDisablesSkipCommands() {
+        let vm = PlaybackViewModel()
+        var settings = AppSettings()
+        settings.remoteControlStyle = .trackSkip
+        vm.updateSettings(settings)
+        vm.setupRemoteCommandCenter()
+
+        vm.hasNext = true
+        vm.hasPrevious = true
+        vm.applyRemoteControlStyle()
+
+        let center = MPRemoteCommandCenter.shared()
+        #expect(center.nextTrackCommand.isEnabled == true)
+        #expect(center.previousTrackCommand.isEnabled == true)
+        #expect(center.skipForwardCommand.isEnabled == false)
+        #expect(center.skipBackwardCommand.isEnabled == false)
+    }
+
+    /// `.seekInterval` — always skip buttons, so next/previous must be off even when
+    /// a next video is queued, and the configured seconds must reach
+    /// preferredIntervals (that value is the number drawn inside the glyph).
+    @Test func seekIntervalStyleDisablesTrackCommandsAndPublishesInterval() {
+        let vm = PlaybackViewModel()
+        var settings = AppSettings()
+        settings.remoteControlStyle = .seekInterval
+        settings.seekBackSeconds = 15
+        settings.seekForwardSeconds = 15
+        vm.updateSettings(settings)
+        vm.setupRemoteCommandCenter()
+
+        vm.hasNext = true
+        vm.hasPrevious = true
+        vm.applyRemoteControlStyle()
+
+        let center = MPRemoteCommandCenter.shared()
+        #expect(center.nextTrackCommand.isEnabled == false)
+        #expect(center.previousTrackCommand.isEnabled == false)
+        #expect(center.skipForwardCommand.isEnabled == true)
+        #expect(center.skipBackwardCommand.isEnabled == true)
+        #expect(center.skipForwardCommand.preferredIntervals.first?.intValue == 15)
+        #expect(center.skipBackwardCommand.preferredIntervals.first?.intValue == 15)
+    }
+
+    /// Changing the setting while a player is already alive must re-apply without a
+    /// reload — updateSettings(_:) calls applyRemoteControlStyle() for this reason.
+    @Test func changingStyleAppliesToAlreadyRegisteredCommands() {
+        let vm = PlaybackViewModel()
+        vm.setupRemoteCommandCenter()          // .automatic by default
+        vm.hasNext = true
+        vm.applyRemoteControlStyle()
+        #expect(MPRemoteCommandCenter.shared().skipForwardCommand.isEnabled == true)
+
+        var settings = AppSettings()
+        settings.remoteControlStyle = .trackSkip
+        vm.updateSettings(settings)
+
+        #expect(MPRemoteCommandCenter.shared().skipForwardCommand.isEnabled == false)
+        #expect(MPRemoteCommandCenter.shared().nextTrackCommand.isEnabled == true)
+    }
+
+    /// updateNowPlayingInfo() runs on every metadata refresh, so it must honour the
+    /// style too rather than unconditionally re-enabling next/previous.
+    @Test func updateNowPlayingInfoRespectsSeekIntervalStyle() {
+        let vm = PlaybackViewModel()
+        var settings = AppSettings()
+        settings.remoteControlStyle = .seekInterval
+        vm.updateSettings(settings)
+        vm.setupRemoteCommandCenter()
+
+        vm.currentVideo = Video(id: "styleVideo", title: "Style", channelTitle: "Chan")
+        vm.hasNext = true
+        vm.hasPrevious = true
+        vm.updateNowPlayingInfo()
+
+        #expect(MPRemoteCommandCenter.shared().nextTrackCommand.isEnabled == false)
+        #expect(MPRemoteCommandCenter.shared().previousTrackCommand.isEnabled == false)
+    }
+
     // MARK: - Artwork fetch starts on new video
 
     /// updateNowPlayingInfo() should set cachedArtworkVideoID when a video with a

@@ -340,6 +340,11 @@ final class TOSPlayerViewModel: NSObject {
     /// Called from `TOSPlayerView.onAppear`. Mirrors `PlaybackViewModel.updateSettings(_:)`.
     func updateSettings(_ newSettings: AppSettings) {
         settings = newSettings
+        #if os(iOS)
+        // Re-apply so a Lock Screen Controls / seek-interval change made in Settings
+        // takes effect on the already-registered commands without a reload.
+        applyRemoteControlStyle()
+        #endif
     }
 
     // MARK: - Lifecycle

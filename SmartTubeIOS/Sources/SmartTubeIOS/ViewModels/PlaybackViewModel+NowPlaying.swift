@@ -106,16 +106,20 @@ extension PlaybackViewModel {
             Task { @MainActor [weak self] in self?.togglePlayPause() }
             return .success
         }
-        center.skipForwardCommand.preferredIntervals = [10]
         center.skipForwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
-            Task { @MainActor [weak self] in self?.seekRelative(seconds: interval) }
+            let eventInterval = (event as? MPSkipIntervalCommandEvent)?.interval
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                seekRelative(seconds: eventInterval ?? Double(settings.seekForwardSeconds))
+            }
             return .success
         }
-        center.skipBackwardCommand.preferredIntervals = [10]
         center.skipBackwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
-            Task { @MainActor [weak self] in self?.seekRelative(seconds: -interval) }
+            let eventInterval = (event as? MPSkipIntervalCommandEvent)?.interval
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                seekRelative(seconds: -(eventInterval ?? Double(settings.seekBackSeconds)))
+            }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
@@ -131,6 +135,43 @@ extension PlaybackViewModel {
             Task { @MainActor [weak self] in self?.playPrevious() }
             return .success
         }
+
+        applyRemoteControlStyle()
+    }
+
+    /// Enables the command pair the user picked in Settings → Player → Lock Screen
+    /// Controls, and disables the other, so the system media controls show either
+    /// next/previous-video buttons or skip-by-seconds buttons.
+    ///
+    /// Called from `setupRemoteCommandCenter()`, from `updateNowPlayingInfo()` (so the
+    /// enabled state tracks `hasNext`/`hasPrevious` as the queue changes) and from
+    /// `updateSettings(_:)` (so a change in Settings applies to a live player).
+    func applyRemoteControlStyle() {
+        let center = MPRemoteCommandCenter.shared()
+
+        switch settings.remoteControlStyle {
+        case .automatic:
+            // Both pairs registered — the system shows next/previous while they are
+            // enabled and falls back to the skip buttons otherwise.
+            center.nextTrackCommand.isEnabled     = hasNext
+            center.previousTrackCommand.isEnabled = hasPrevious
+            center.skipForwardCommand.isEnabled   = true
+            center.skipBackwardCommand.isEnabled  = true
+        case .trackSkip:
+            center.nextTrackCommand.isEnabled     = hasNext
+            center.previousTrackCommand.isEnabled = hasPrevious
+            center.skipForwardCommand.isEnabled   = false
+            center.skipBackwardCommand.isEnabled  = false
+        case .seekInterval:
+            center.nextTrackCommand.isEnabled     = false
+            center.previousTrackCommand.isEnabled = false
+            center.skipForwardCommand.isEnabled   = true
+            center.skipBackwardCommand.isEnabled  = true
+        }
+
+        // The interval drives the number drawn inside the skip glyphs (e.g. ⏪15).
+        center.skipForwardCommand.preferredIntervals  = [NSNumber(value: settings.seekForwardSeconds)]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: settings.seekBackSeconds)]
     }
 
     func updateNowPlayingInfo() {
@@ -186,10 +227,8 @@ extension PlaybackViewModel {
             }
         }
 
-        // Update next/previous button enabled state.
-        let center = MPRemoteCommandCenter.shared()
-        center.nextTrackCommand.isEnabled = hasNext
-        center.previousTrackCommand.isEnabled = hasPrevious
+        // Update which command pair is enabled, and their next/previous availability.
+        applyRemoteControlStyle()
 
         setNowPlayingInfo(nowPlayingInfoCache)
     }

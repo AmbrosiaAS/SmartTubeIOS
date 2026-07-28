@@ -3818,6 +3818,102 @@
         }
       }
     },
+    "Automatic": {
+      "comment": "Settings picker option — Lock Screen Controls: next/previous when available, skip buttons otherwise",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تلقائي"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatique"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्वचालित"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatski"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatis"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatico"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автоматически"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Аутоматски"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动"
+          }
+        }
+      }
+    },
     "Autoplay next video": {
       "comment": "Settings toggle",
       "extractionState": "manual",
@@ -11715,6 +11811,198 @@
         }
       }
     },
+    "Lock Screen Controls": {
+      "comment": "Settings picker label — which buttons the system media controls show either side of play/pause",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عناصر التحكم في شاشة القفل"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sperrbildschirm-Steuerung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controles de pantalla bloqueada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commandes de l’écran verrouillé"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "लॉक स्क्रीन नियंत्रण"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrole na zaključanom zaslonu"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrol Layar Terkunci"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controlli schermata di blocco"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ロック画面のコントロール"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "잠금 화면 컨트롤"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controles da tela de bloqueio"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Управление на экране блокировки"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Контроле на закључаном екрану"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilit Ekranı Denetimleri"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "锁定屏幕控制"
+          }
+        }
+      }
+    },
+    "Lock Screen Controls sets the buttons either side of play/pause on the Lock Screen, in Control Center and on headphones. Automatic shows Next / Previous Video when another video is available and skip buttons otherwise.": {
+      "comment": "Settings → Player section footer explaining the Lock Screen Controls picker",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحدد \"عناصر التحكم في شاشة القفل\" الأزرار الموجودة على جانبي زر التشغيل/الإيقاف المؤقت في شاشة القفل ومركز التحكم وسماعات الرأس. يعرض الوضع التلقائي زري الفيديو التالي/السابق عند توفر فيديو آخر، وأزرار التقديم والترجيع في الحالات الأخرى."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„Sperrbildschirm-Steuerung“ legt fest, welche Tasten links und rechts von Wiedergabe/Pause auf dem Sperrbildschirm, im Kontrollzentrum und an Kopfhörern erscheinen. „Automatisch“ zeigt Nächstes / vorheriges Video, wenn ein weiteres Video verfügbar ist, andernfalls die Sprungtasten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Controles de pantalla bloqueada» define los botones situados a ambos lados de reproducir/pausa en la pantalla bloqueada, en el centro de control y en los auriculares. «Automático» muestra vídeo siguiente / anterior cuando hay otro vídeo disponible y, si no, los botones de avance y retroceso."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "« Commandes de l’écran verrouillé » détermine les boutons situés de part et d’autre de lecture/pause sur l’écran verrouillé, dans le centre de contrôle et sur les écouteurs. « Automatique » affiche vidéo suivante / précédente lorsqu’une autre vidéo est disponible, et sinon les boutons d’avance et de retour."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"लॉक स्क्रीन नियंत्रण\" तय करता है कि लॉक स्क्रीन, कंट्रोल सेंटर और हेडफ़ोन पर चलाएँ/रोकें के दोनों ओर कौन-से बटन दिखें। \"स्वचालित\" में दूसरा वीडियो उपलब्ध होने पर अगला / पिछला वीडियो बटन दिखते हैं, अन्यथा आगे और पीछे जाने वाले बटन।"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„Kontrole na zaključanom zaslonu” određuju gumbe s obje strane reprodukcije/pauze na zaključanom zaslonu, u kontrolnom centru i na slušalicama. „Automatski” prikazuje sljedeći / prethodni videozapis kada je dostupan još jedan videozapis, a inače gumbe za preskakanje."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Kontrol Layar Terkunci\" menentukan tombol di kedua sisi putar/jeda pada layar terkunci, di pusat kontrol, dan pada headphone. \"Otomatis\" menampilkan video berikutnya / sebelumnya bila ada video lain, dan tombol lewati jika tidak ada."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Controlli schermata di blocco\" imposta i pulsanti ai due lati di riproduci/pausa nella schermata di blocco, nel centro di controllo e sulle cuffie. \"Automatico\" mostra video successivo / precedente quando è disponibile un altro video, altrimenti i pulsanti di avanzamento e riavvolgimento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「ロック画面のコントロール」は、ロック画面、コントロールセンター、ヘッドフォンで再生/一時停止の両側に表示されるボタンを設定します。「自動」では、ほかの動画がある場合は次 / 前の動画ボタンが、ない場合は早送り / 巻き戻しボタンが表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "'잠금 화면 컨트롤'은 잠금 화면, 제어 센터, 헤드폰에서 재생/일시 정지 양옆에 표시되는 버튼을 설정합니다. '자동'은 다른 동영상이 있을 때 다음 / 이전 동영상 버튼을, 그렇지 않으면 건너뛰기 버튼을 표시합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Controles da tela de bloqueio\" define os botões dos dois lados de reproduzir/pausar na tela de bloqueio, na central de controle e nos fones de ouvido. \"Automático\" mostra vídeo seguinte / anterior quando há outro vídeo disponível e, caso contrário, os botões de avançar e retroceder."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Управление на экране блокировки» задаёт кнопки по обе стороны от воспроизведения/паузы на экране блокировки, в пункте управления и на наушниках. «Автоматически» показывает следующее / предыдущее видео, если доступно другое видео, и кнопки перемотки в остальных случаях."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„Контроле на закључаном екрану” одређују дугмад са обе стране репродукције/паузе на закључаном екрану, у контролном центру и на слушалицама. „Аутоматски” приказује следећи / претходни видео када је доступан још један видео, а иначе дугмад за прескакање."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Kilit Ekranı Denetimleri\", kilit ekranında, denetim merkezinde ve kulaklıklarda oynat/duraklat düğmesinin iki yanındaki düğmeleri belirler. \"Otomatik\", başka bir video varsa sonraki / önceki video düğmelerini, yoksa atlama düğmelerini gösterir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“锁定屏幕控制”决定锁定屏幕、控制中心和耳机上播放/暂停两侧显示的按钮。“自动”会在有其他视频时显示下一个 / 上一个视频按钮，否则显示快进和快退按钮。"
+          }
+        }
+      }
+    },
     "Loop Video": {
       "comment": "Settings toggle to loop the current video",
       "extractionState": "manual",
@@ -12379,6 +12667,102 @@
           "stringUnit": {
             "state": "translated",
             "value": "音乐（无关内容）"
+          }
+        }
+      }
+    },
+    "Next / Previous Video": {
+      "comment": "Settings picker option — Lock Screen Controls: always show next/previous video buttons",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الفيديو التالي / السابق"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nächstes / vorheriges Video"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vídeo siguiente / anterior"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vidéo suivante / précédente"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अगला / पिछला वीडियो"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sljedeći / prethodni videozapis"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Berikutnya / Sebelumnya"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video successivo / precedente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "次 / 前の動画"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 / 이전 동영상"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vídeo seguinte / anterior"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Следующее / предыдущее видео"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Следећи / претходни видео"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonraki / Önceki Video"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一个 / 上一个视频"
           }
         }
       }
@@ -21540,6 +21924,102 @@
           "stringUnit": {
             "state": "translated",
             "value": "跳过"
+          }
+        }
+      }
+    },
+    "Skip Forward / Back": {
+      "comment": "Settings picker option — Lock Screen Controls: always show skip-by-seconds buttons",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "التقديم / الترجيع"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vor- / Zurückspringen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avanzar / retroceder"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avance / retour rapide"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आगे / पीछे जाएँ"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preskoči naprijed / natrag"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lewati Maju / Mundur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avanti / indietro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "早送り / 巻き戻し"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "앞으로 / 뒤로 건너뛰기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avançar / retroceder"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перемотка вперёд / назад"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прескочи напред / назад"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İleri / Geri Atla"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快进 / 快退"
           }
         }
       }

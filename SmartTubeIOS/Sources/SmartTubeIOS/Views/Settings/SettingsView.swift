@@ -86,7 +86,7 @@ public struct SettingsView: View {
 
     private var playerSection: some View {
         @Bindable var store = store
-        return Section("Player") {
+        return Section {
             Picker("Playback Speed", selection: $store.settings.playbackSpeed) {
                 ForEach(AppSettings.availableSpeeds, id: \.self) { s in
                     Text(s == 1.0 ? "Normal" : "\(s, specifier: "%.2g")×").tag(s)
@@ -118,6 +118,18 @@ public struct SettingsView: View {
             .accessibilityIdentifier("settings.preferredAudioLanguageRow")
             #endif
 
+            #if os(iOS)
+            // Which buttons the Lock Screen / Control Center / headphone remote shows
+            // either side of play/pause. Only meaningful where the system media
+            // controls are wired up — see PlaybackViewModel+NowPlaying.
+            Picker("Lock Screen Controls", selection: $store.settings.remoteControlStyle) {
+                Text("Automatic").tag(AppSettings.RemoteControlStyle.automatic)
+                Text("Next / Previous Video").tag(AppSettings.RemoteControlStyle.trackSkip)
+                Text("Skip Forward / Back").tag(AppSettings.RemoteControlStyle.seekInterval)
+            }
+            .accessibilityIdentifier("settings.remoteControlStylePicker")
+            #endif
+
             #if os(tvOS)
             Picker("Seek Back", selection: $store.settings.seekBackSeconds) {
                 ForEach(AppSettings.availableSeekOptions, id: \.self) { s in
@@ -131,6 +143,23 @@ public struct SettingsView: View {
                 }
             }
             .accessibilityIdentifier("settings.seekForwardRow")
+            #elseif os(iOS)
+            // Shown only for the skip style — these values pick the number drawn in
+            // the Lock Screen skip glyphs (e.g. 15) as well as the seek amount.
+            if store.settings.remoteControlStyle == .seekInterval {
+                Picker("Seek Back", selection: $store.settings.seekBackSeconds) {
+                    ForEach(AppSettings.availableSeekOptions, id: \.self) { s in
+                        Text("\(s) s").tag(s)
+                    }
+                }
+                .accessibilityIdentifier("settings.seekBackRow")
+                Picker("Seek Forward", selection: $store.settings.seekForwardSeconds) {
+                    ForEach(AppSettings.availableSeekOptions, id: \.self) { s in
+                        Text("\(s) s").tag(s)
+                    }
+                }
+                .accessibilityIdentifier("settings.seekForwardRow")
+            }
             #elseif os(macOS)
             Stepper(
                 "Seek Back: \(store.settings.seekBackSeconds) s",
@@ -172,6 +201,14 @@ public struct SettingsView: View {
             #if !os(iOS)
             Toggle("Prefer H.264 Codec", isOn: $store.settings.preferH264)
                 .accessibilityIdentifier("settings.preferH264Toggle")
+            #endif
+        } header: {
+            Text("Player")
+        } footer: {
+            #if os(iOS)
+            Text("Lock Screen Controls sets the buttons either side of play/pause on the Lock Screen, in Control Center and on headphones. Automatic shows Next / Previous Video when another video is available and skip buttons otherwise.")
+            #else
+            EmptyView()
             #endif
         }
     }

@@ -1,0 +1,132 @@
+<meta charset="utf-8">
+<title>Claude Cowork + WSL on Windows</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #FAF9F7; }
+  svg { display: block; }
+</style>
+
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1042" viewBox="0 0 1500 1042"
+     font-family="Liberation Sans, DejaVu Sans, Helvetica, Arial, sans-serif">
+
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8A847C"/>
+    </marker>
+    <marker id="ah-coral" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#C96442"/>
+    </marker>
+    <marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B6EA5"/>
+    </marker>
+  </defs>
+
+  <rect width="1500" height="1042" fill="#FAF9F7"/>
+
+  <!-- ══════════ Title ══════════ -->
+  <text x="48" y="72" font-size="38" font-weight="bold" fill="#191817">Claude Cowork + WSL on Windows</text>
+  <text x="48" y="106" font-size="19" fill="#6B6660">Two Linux guests, one virtualization layer &#8212; siblings, not nested</text>
+
+  <!-- ══════════ Your Windows files (left column) ══════════ -->
+  <rect x="48" y="170" width="272" height="330" rx="14" fill="#FFFFFF" stroke="#D6D1CA" stroke-width="1.5"/>
+  <text x="76" y="212" font-size="18" font-weight="bold" fill="#191817">Your Windows files</text>
+  <text x="76" y="236" font-size="13" fill="#6B6660">NTFS, owned by the host</text>
+
+  <line x1="76" y1="258" x2="292" y2="258" stroke="#E9E5DF" stroke-width="1.5"/>
+
+  <text x="76" y="292" font-size="12.5" font-family="DejaVu Sans Mono, monospace" fill="#4A4540">C:\Users\you\Documents</text>
+  <text x="76" y="318" font-size="12.5" font-family="DejaVu Sans Mono, monospace" fill="#4A4540">C:\Users\you\Projects</text>
+  <text x="76" y="344" font-size="12.5" font-family="DejaVu Sans Mono, monospace" fill="#4A4540">\\wsl.localhost\Ubuntu</text>
+
+  <text x="76" y="392" font-size="12.5" fill="#6B6660">Windows can browse into the</text>
+  <text x="76" y="412" font-size="12.5" fill="#6B6660">distro over that last path &#8212; but</text>
+  <text x="76" y="432" font-size="12.5" fill="#6B6660">it goes through a network share,</text>
+  <text x="76" y="452" font-size="12.5" fill="#6B6660">so it is slow and breaks file</text>
+  <text x="76" y="472" font-size="12.5" fill="#6B6660">watching.</text>
+
+  <!-- ══════════ Claude Desktop ══════════ -->
+  <rect x="380" y="170" width="1072" height="160" rx="14" fill="#FFFFFF" stroke="#D6D1CA" stroke-width="1.5"/>
+  <text x="412" y="208" font-size="21" font-weight="bold" fill="#191817">Claude Desktop</text>
+  <text x="412" y="230" font-size="13" fill="#6B6660">a native Windows app &#8212; the interface itself never leaves the host</text>
+
+  <!-- pills -->
+  <rect x="412" y="250" width="170" height="44" rx="22" fill="#F2EFEA" stroke="#D6D1CA" stroke-width="1.5"/>
+  <text x="497" y="278" font-size="15" font-weight="bold" fill="#6B6660" text-anchor="middle">Chat</text>
+
+  <rect x="602" y="250" width="210" height="44" rx="22" fill="#FBEFE9" stroke="#E0A182" stroke-width="1.8"/>
+  <text x="707" y="278" font-size="15" font-weight="bold" fill="#A84E2E" text-anchor="middle">Cowork</text>
+
+  <rect x="832" y="250" width="230" height="44" rx="22" fill="#EAF1F8" stroke="#93B4D4" stroke-width="1.8"/>
+  <text x="947" y="278" font-size="15" font-weight="bold" fill="#2F5C8C" text-anchor="middle">Code</text>
+
+  <text x="412" y="318" font-size="12.5" fill="#6B6660">Chat is answered on Anthropic&#8217;s servers. Cowork and Code do their work locally, in the Linux guests below.</text>
+
+  <!-- ══════════ Arrows: pills → hypervisor ══════════ -->
+  <path d="M 707 336 C 707 360, 638 356, 638 382" fill="none" stroke="#C96442" stroke-width="2.2" marker-end="url(#ah-coral)"/>
+  <text x="600" y="366" font-size="12.5" font-weight="bold" fill="#A84E2E" text-anchor="end">Cowork tab</text>
+
+  <path d="M 947 336 C 947 360, 1194 356, 1194 382" fill="none" stroke="#3B6EA5" stroke-width="2.2" marker-end="url(#ah-blue)"/>
+  <text x="1236" y="366" font-size="12.5" font-weight="bold" fill="#2F5C8C">Code tab &#8594; pick a WSL distro</text>
+
+  <!-- ══════════ Virtualization layer ══════════ -->
+  <rect x="380" y="390" width="1072" height="92" rx="14" fill="#F0EDE8" stroke="#C8C2B9" stroke-width="1.8"/>
+  <text x="916" y="428" font-size="20" font-weight="bold" fill="#33302C" text-anchor="middle">Virtual Machine Platform &#183; Windows Hypervisor</text>
+  <text x="916" y="456" font-size="12.5" font-family="DejaVu Sans Mono, monospace" fill="#6B6660" text-anchor="middle">Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform</text>
+
+  <!-- ══════════ Arrows: hypervisor → guests ══════════ -->
+  <path d="M 638 486 L 638 532" fill="none" stroke="#C96442" stroke-width="2.2" marker-end="url(#ah-coral)"/>
+  <path d="M 1194 486 L 1194 532" fill="none" stroke="#3B6EA5" stroke-width="2.2" marker-end="url(#ah-blue)"/>
+
+  <!-- ══════════ Cowork sandbox VM ══════════ -->
+  <rect x="380" y="540" width="516" height="262" rx="14" fill="#FBEFE9" stroke="#E0A182" stroke-width="1.8"/>
+  <rect x="756" y="558" width="112" height="24" rx="12" fill="#F3DACB"/>
+  <text x="812" y="575" font-size="11.5" font-weight="bold" fill="#A84E2E" text-anchor="middle">LINUX GUEST</text>
+
+  <text x="412" y="582" font-size="21" font-weight="bold" fill="#191817">Cowork sandbox VM</text>
+  <text x="412" y="606" font-size="13" fill="#8A6450">created and managed by Claude Desktop</text>
+
+  <circle cx="418" cy="638" r="3" fill="#C96442"/>
+  <text x="436" y="643" font-size="15" fill="#33302C">Its own lightweight Linux guest</text>
+  <circle cx="418" cy="670" r="3" fill="#C96442"/>
+  <text x="436" y="675" font-size="15" fill="#33302C">Runs the agent loop &#8212; bash, Python, file edits</text>
+  <circle cx="418" cy="702" r="3" fill="#C96442"/>
+  <text x="436" y="707" font-size="15" fill="#33302C">Sees only the folders you pick, mounted per session</text>
+  <circle cx="418" cy="734" r="3" fill="#C96442"/>
+  <text x="436" y="739" font-size="15" fill="#33302C">Network egress is filtered, not wide open</text>
+  <circle cx="418" cy="766" r="3" fill="#C96442"/>
+  <text x="436" y="771" font-size="15" fill="#33302C">Needs nested virtualization to boot at all</text>
+
+  <!-- ══════════ WSL 2 distro ══════════ -->
+  <rect x="936" y="540" width="516" height="262" rx="14" fill="#EAF1F8" stroke="#93B4D4" stroke-width="1.8"/>
+  <rect x="1312" y="558" width="112" height="24" rx="12" fill="#D2E1F0"/>
+  <text x="1368" y="575" font-size="11.5" font-weight="bold" fill="#2F5C8C" text-anchor="middle">LINUX GUEST</text>
+
+  <text x="968" y="582" font-size="21" font-weight="bold" fill="#191817">Your WSL 2 distro</text>
+  <text x="968" y="606" font-size="13" fill="#4B7098">Ubuntu, Debian&#8230; installed by you &#8212; WSL 1 is not supported</text>
+
+  <circle cx="974" cy="638" r="3" fill="#3B6EA5"/>
+  <text x="992" y="643" font-size="15" fill="#33302C">The Code tab can start a session inside it</text>
+  <circle cx="974" cy="670" r="3" fill="#3B6EA5"/>
+  <text x="992" y="675" font-size="15" fill="#33302C">Claude Code, git and your toolchain run in here</text>
+  <circle cx="974" cy="702" r="3" fill="#3B6EA5"/>
+  <text x="992" y="707" font-size="15" fill="#33302C">Native Linux paths, e.g. /home/you/project</text>
+  <circle cx="974" cy="734" r="3" fill="#3B6EA5"/>
+  <text x="992" y="739" font-size="15" fill="#33302C">Windows drives mount at /mnt/c</text>
+  <circle cx="974" cy="766" r="3" fill="#3B6EA5"/>
+  <text x="992" y="771" font-size="15" fill="#33302C">Trust is granted per distro + folder</text>
+
+  <!-- ══════════ Mount arrow: files → Cowork VM ══════════ -->
+  <path d="M 184 506 L 184 640 L 370 640" fill="none" stroke="#8A847C" stroke-width="2"
+        stroke-dasharray="7 5" marker-end="url(#ah)"/>
+  <text x="278" y="628" font-size="12.5" font-weight="bold" fill="#6B6660" text-anchor="middle">folders you share</text>
+
+  <!-- ══════════ Why it matters ══════════ -->
+  <rect x="48" y="852" width="1404" height="150" rx="14" fill="#FFFFFF" stroke="#D6D1CA" stroke-width="1.5"/>
+  <text x="80" y="890" font-size="12.5" font-weight="bold" fill="#A84E2E" letter-spacing="1.6">WHY IT MATTERS</text>
+  <text x="80" y="924" font-size="16" fill="#33302C">Cowork does not run inside your Ubuntu distro. It boots its own Linux VM alongside it. Both rely on the same Virtual Machine</text>
+  <text x="80" y="952" font-size="16" fill="#33302C">Platform feature that WSL 2 requires &#8212; which is why enabling WSL often fixes a Cowork sandbox that refuses to start, and why</text>
+  <text x="80" y="980" font-size="16" fill="#33302C">Cowork cannot run on a cloud VM or VDI host that lacks nested virtualization.</text>
+
+</svg>

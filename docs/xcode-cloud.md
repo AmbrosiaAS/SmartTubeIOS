@@ -147,7 +147,7 @@ you want a meaningful test gate.
 - **tvOS signing.** `Smart Tube` used `CODE_SIGN_STYLE = Manual` with
   `PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*] = "Smart Tube TV"`. Xcode
   Cloud manages signing itself and requires automatic signing, so the target now
-  matches the others: automatic, `DEVELOPMENT_TEAM = 5A4JA438MW`, no pinned
+  matches the others: automatic, `DEVELOPMENT_TEAM = 2PY6GWGD8U`, no pinned
   profile. **This changes local tvOS signing too** — the named profile is no
   longer used.
 - **`CODE_SIGN_IDENTITY`.** Eight configurations pinned the legacy

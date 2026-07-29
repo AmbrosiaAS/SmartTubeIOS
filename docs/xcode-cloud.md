@@ -126,13 +126,24 @@ letting xcodebuild report a missing resource much later.
 ## 4. Suggested workflows
 
 Schemes are already shared under
-`SmartTubeApp/SmartTubeApp.xcodeproj/xcshareddata/xcschemes/`, so both apps are
+`SmartTubeApp/SmartTubeApp.xcodeproj/xcshareddata/xcschemes/`, so every scheme is
 selectable.
+
+**Scope: iOS and iPadOS only.** The `SmartTube` scheme covers both — its target
+sets `TARGETED_DEVICE_FAMILY = "1,2"` (iPhone and iPad), so one workflow action
+builds for both, and there is no separate iPad workflow to create. The `Smart
+Tube` scheme (`SDKROOT = appletvos`) and the tvOS targets stay in the project but
+are deliberately **not** built by Xcode Cloud.
 
 | Workflow | Start condition | Actions |
 | --- | --- | --- |
-| PR validation | Pull request to `master` | Build `SmartTube` (iOS) + `Smart Tube` (tvOS) |
+| PR validation | Pull request to `master` | Build `SmartTube` (iOS/iPadOS) |
 | TestFlight | Push to `master` | Archive `SmartTube` → TestFlight (internal) |
+
+The `SmartTube` target also carries `macosx` in `SUPPORTED_PLATFORMS` with
+`SDKROOT = auto` (the "Designed for iPad" / Catalyst path). That is inert as long
+as workflows specify the iOS platform, but it is the one place the project claims
+a platform outside this scope.
 
 Note that `SmartTube.xctestplan` contains only `SmartTubeUITests`, and those
 tests lean on AirPlay, live network and playback benchmarks

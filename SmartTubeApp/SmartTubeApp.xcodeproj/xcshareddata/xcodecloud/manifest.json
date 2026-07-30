@@ -1,0 +1,9 @@
+{
+  "id" : "28ad584e-1fd0-432b-8eef-d4bfb15db82d",
+  "targets" : [
+    {
+      "id" : "d9857dd2-e4e0-4d39-aa8c-ebe4feb4b6ac",
+      "name" : "SmartTube"
+    }
+  ]
+}

@@ -79,3 +79,5 @@ tmp/
 fabric.properties
 *BAK.java
 hs_err_pid*.log
+
+.claude/settings.local.json

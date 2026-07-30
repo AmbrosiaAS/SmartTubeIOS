@@ -39,7 +39,7 @@ struct AppEntry: App {
     }
     #endif
 
-    private static let appGroup             = "group.com.void.smarttube"
+    private static let appGroup             = "group.com.ambronet.smarttube"
     private static let pendingKey           = "pendingVideoID"
     private static let pendingWatchLaterKey = "pendingWatchLaterVideoID"
     private static let pendingQueueKey      = "pendingQueueVideoID"

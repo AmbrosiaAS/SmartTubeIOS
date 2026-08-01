@@ -13,7 +13,6 @@
 		494A17316084B602873D7C05 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AE55B486AFD7F51FEF1874FF /* Assets.xcassets */; };
 		53352CFF63CF0A5B34A1998B /* SpinnerDismissalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD3DC338DC0106A0F179BC1 /* SpinnerDismissalUITests.swift */; };
 		673C1D012F7F20340021583B /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 673C1D002F7F20340021583B /* Launch Screen.storyboard */; platformFilter = ios; };
-		67A5E80B2FB3932400C53D61 /* SafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 67A5E7F32FB3932400C53D61 /* SafariExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		67AEAB0F2FAF96BC00820F4D /* VideoDownloadUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AEAB0E2FAF96BC00820F4D /* VideoDownloadUITests.swift */; };
 		67B1B1732FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B1B1722FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift */; };
 		67E2B0742FAD1BBE005F70E6 /* MiniPlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67E2B0732FAD1BBE005F70E6 /* MiniPlayerUITests.swift */; };
@@ -84,7 +83,6 @@
 		D222FD43501FE20610A249CC /* PlaylistsNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AC502830145DD05002B5A2 /* PlaylistsNavigationUITests.swift */; };
 		D4F5A6B7C8D9E0F1A2B3C4D5 /* SubscriptionsPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3E4F5A6B7C8D9E0F1A2B3C4 /* SubscriptionsPlaybackUITests.swift */; };
 		D6E0F5A6B7C8D9E0F1A2B3C4 /* HomeFeedAndSettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D9E4F5A6B7C8D9E0F1A2B3 /* HomeFeedAndSettingsUITests.swift */; };
-		D9B2E782B8D7E9E750193022 /* SmartTubeDownloadWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 79E77E6DD18B12CA7A5341D0 /* SmartTubeDownloadWidget.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DD2551477B9F9B6D89AE6FCB /* AppEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29356C9641042E3DA5F16175 /* AppEntry.swift */; };
 		E3F4A5B6C7D8E9F0A1B2C3D4 /* CategoryChipHTTP400UITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F0A1B2C3D4E5 /* CategoryChipHTTP400UITests.swift */; };
 		E5F6A7B8C9D0E1F2A3B4C5D6 /* SubscriptionsScrollRestorationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E6F7A8B9C0D1E2F3A4B5C6 /* SubscriptionsScrollRestorationUITests.swift */; };
@@ -116,26 +114,12 @@
 			remoteGlobalIDString = 67E6B67A2F9535CD00CD372F;
 			remoteInfo = "Smart Tube";
 		};
-		49607BD3D63D4720113FA32C /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 92FF8ABD9CCECACCB7D9D2F1;
-			remoteInfo = SmartTubeDownloadWidget;
-		};
 		5B9FD798A2B61FB0B894387A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 5A4C56D3A7C36BE68C3C3CE0;
 			remoteInfo = SmartTube;
-		};
-		67A5E8092FB3932400C53D61 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 67A5E7F22FB3932400C53D61;
-			remoteInfo = SafariExtension;
 		};
 		AA01000000000000000000AF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -153,9 +137,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				D9B2E782B8D7E9E750193022 /* SmartTubeDownloadWidget.appex in Embed Foundation Extensions */,
 				AA01000000000000000000A6 /* SmartTubeShareExtension.appex in Embed Foundation Extensions */,
-				67A5E80B2FB3932400C53D61 /* SafariExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -572,9 +554,7 @@
 			buildRules = (
 			);
 			dependencies = (
-				0FBA651F0825F996F27B7476 /* PBXTargetDependency */,
 				AA01000000000000000000B0 /* PBXTargetDependency */,
-				67A5E80A2FB3932400C53D61 /* PBXTargetDependency */,
 			);
 			name = SmartTube;
 			packageProductDependencies = (
@@ -987,21 +967,10 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		0FBA651F0825F996F27B7476 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = SmartTubeDownloadWidget;
-			target = 92FF8ABD9CCECACCB7D9D2F1 /* SmartTubeDownloadWidget */;
-			targetProxy = 49607BD3D63D4720113FA32C /* PBXContainerItemProxy */;
-		};
 		1A2B3C4D5E6F1A2B3C4D5E6A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 67E6B67A2F9535CD00CD372F /* Smart Tube */;
 			targetProxy = 1A2B3C4D5E6F1A2B3C4D5E69 /* PBXContainerItemProxy */;
-		};
-		67A5E80A2FB3932400C53D61 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 67A5E7F22FB3932400C53D61 /* SafariExtension */;
-			targetProxy = 67A5E8092FB3932400C53D61 /* PBXContainerItemProxy */;
 		};
 		AA01000000000000000000B0 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;

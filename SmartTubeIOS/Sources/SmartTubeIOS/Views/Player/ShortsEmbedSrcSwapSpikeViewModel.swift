@@ -116,10 +116,16 @@ final class ShortsEmbedSrcSwapSpikeViewModel: NSObject {
     }
 
     deinit {
-        webView.configuration.userContentController.removeScriptMessageHandler(
-            forName: "ytCallback",
-            contentWorld: .page
-        )
+        // deinit is nonisolated even in a @MainActor class, and WKUserContentController
+        // is main-actor-bound — hop over rather than touch it synchronously here. The
+        // captured webView keeps the controller alive until the handler is detached.
+        let webView = self.webView
+        Task { @MainActor in
+            webView.configuration.userContentController.removeScriptMessageHandler(
+                forName: "ytCallback",
+                contentWorld: .page
+            )
+        }
     }
 
     // MARK: - Lifecycle

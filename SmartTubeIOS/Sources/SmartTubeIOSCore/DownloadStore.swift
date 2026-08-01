@@ -129,7 +129,6 @@ public final class DownloadStore {
             } else {
                 let newURL = destinationURL(for: entry.videoId)
                 if fm.fileExists(atPath: newURL.path) {
-                    var updated = entry
                     // DownloadedVideo is a struct — recreate with the corrected fileURL.
                     let corrected = DownloadedVideo(
                         videoId: entry.videoId,
@@ -140,7 +139,6 @@ public final class DownloadStore {
                         fileURL: newURL,
                         downloadedAt: entry.downloadedAt
                     )
-                    _ = updated  // silence unused warning
                     migrated.append(corrected)
                 }
                 // If neither path exists, the file was deleted — drop the entry.

@@ -417,8 +417,10 @@ public final class PlaybackViewModel {
     // read from MediaPlayer's internal artwork-closure thread. nonisolated(unsafe) is
     // intentional: UIImage is immutable after creation and the worst-case race is that
     // MediaPlayer gets nil on the first render (it will retry on the next state update).
+    // @ObservationIgnored keeps it a genuine stored property — without it the
+    // @Observable macro rewrites it as computed and nonisolated(unsafe) has no effect.
     #if canImport(UIKit)
-    nonisolated(unsafe) var cachedArtwork: UIImage? = nil
+    @ObservationIgnored nonisolated(unsafe) var cachedArtwork: UIImage? = nil
     @ObservationIgnored var cachedArtworkVideoID: String? = nil
     #endif
 

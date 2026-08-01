@@ -831,7 +831,6 @@ extension YouTubeWebViewHLSExtractor: WKScriptMessageHandler {
         var urlSource = "unknown"
         var unsolvedNValue: String? = nil
         var solvedNValue: String? = nil
-        var playerIDValue: String? = nil
 
         if let body = message.body as? String {
             // Try to parse as JSON first (new format)
@@ -847,7 +846,6 @@ extension YouTubeWebViewHLSExtractor: WKScriptMessageHandler {
                 urlSource = (json["source"] as? String) ?? "unknown"
                 unsolvedNValue = json["unsolvedN"] as? String
                 solvedNValue = json["solvedN"] as? String
-                playerIDValue = json["playerID"] as? String
                 // fix29: Reject stale JS callbacks from a previous page. When wv.load()
                 // switches to a new video, any in-flight XHR/fetch callbacks from the
                 // old page may fire after `currentExtractionVideoId` has changed. The

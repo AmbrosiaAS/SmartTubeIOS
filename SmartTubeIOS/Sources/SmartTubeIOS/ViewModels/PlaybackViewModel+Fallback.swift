@@ -67,7 +67,7 @@ extension PlaybackViewModel {
             // minted a valid CDN token during loadAsync's 2 s prefetchPoToken window. Using
             // this token allows the proxy's Step 4 to inject pot= into segment URLs so the
             // CDN accepts them without iOS UA rejection.
-            var capturedPoToken = await VideoPreloadCache.shared.cachedPoToken(for: video.id)
+            let capturedPoToken = await VideoPreloadCache.shared.cachedPoToken(for: video.id)
             // NOTE: Do NOT fall back to InnerTubeAPI.currentPoToken (BotGuard token, ~107 chars).
             // The BotGuard pot= is for youtubei/v1/player API auth; it is NOT a valid CDN
             // segment token. Injecting it into segment URLs TRIGGERS pot= validation on CDN

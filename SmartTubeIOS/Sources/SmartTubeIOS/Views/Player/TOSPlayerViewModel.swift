@@ -198,7 +198,9 @@ final class TOSPlayerViewModel: NSObject {
     /// `nonisolated(unsafe)` so MPMediaItemArtwork's requestHandler closure (invoked
     /// on MediaPlayer's private serial queue) can read it without a Swift 6
     /// actor-isolation assertion — mirrors PlaybackViewModel.cachedArtwork exactly.
-    nonisolated(unsafe) var cachedArtwork: UIImage? = nil
+    /// `@ObservationIgnored` keeps it a genuine stored property — without it the
+    /// `@Observable` macro rewrites it as computed and `nonisolated(unsafe)` has no effect.
+    @ObservationIgnored nonisolated(unsafe) var cachedArtwork: UIImage? = nil
     @ObservationIgnored var cachedArtworkVideoID: String? = nil
     #endif
 
@@ -329,10 +331,16 @@ final class TOSPlayerViewModel: NSObject {
     }
 
     deinit {
-        webView.configuration.userContentController.removeScriptMessageHandler(
-            forName: "ytCallback",
-            contentWorld: .page
-        )
+        // deinit is nonisolated even in a @MainActor class, and WKUserContentController
+        // is main-actor-bound — hop over rather than touch it synchronously here. The
+        // captured webView keeps the controller alive until the handler is detached.
+        let webView = self.webView
+        Task { @MainActor in
+            webView.configuration.userContentController.removeScriptMessageHandler(
+                forName: "ytCallback",
+                contentWorld: .page
+            )
+        }
     }
 
     // MARK: - Settings update

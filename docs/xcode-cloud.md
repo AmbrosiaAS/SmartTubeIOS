@@ -119,7 +119,7 @@ base64 -i SmartTubeApp/SmartTubeApp/GoogleService-Info.plist | pbcopy
 
 If the variable is unset, the script falls back to the committed tvOS plist at
 `SmartTubeApp/Smart Tube/GoogleService-Info.plist` — both apps use the bundle id
-`com.void.smarttube.app`, so it is a valid stand-in — and logs a warning. If
+`com.ambronet.smarttube`, so it is a valid stand-in — and logs a warning. If
 neither is available it fails the build with an actionable message rather than
 letting xcodebuild report a missing resource much later.
 

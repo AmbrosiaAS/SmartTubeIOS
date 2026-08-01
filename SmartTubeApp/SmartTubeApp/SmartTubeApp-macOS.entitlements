@@ -11,6 +11,6 @@
 		<string>group.com.ambronet.smarttube</string>
 	</array>
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
-	<string>$(TeamIdentifierPrefix)com.void.smarttube</string>
+	<string>$(TeamIdentifierPrefix)com.ambronet.smarttube</string>
 </dict>
 </plist>

@@ -46,7 +46,7 @@ elif [ -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
     printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | decode_base64 > "$IOS_PLIST"
 elif [ -f "$TV_PLIST" ]; then
     # The tvOS target ships its own copy, and both apps use the same bundle id
-    # (com.void.smarttube.app), so it is a valid stand-in. Warn, because relying
+    # (com.ambronet.smarttube), so it is a valid stand-in. Warn, because relying
     # on it silently couples the two targets to one Firebase app registration.
     log "WARNING: GOOGLE_SERVICE_INFO_PLIST_BASE64 is not set."
     log "WARNING: falling back to the committed tvOS GoogleService-Info.plist."

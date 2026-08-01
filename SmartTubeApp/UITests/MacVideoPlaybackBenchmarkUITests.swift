@@ -64,7 +64,7 @@ final class MacVideoPlaybackBenchmarkUITests: XCTestCase {
         // pass the NSUserDefaults key as a launch arg so SwiftUI skips restoration.
         #if os(macOS)
         let savedState = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Saved Application State/com.void.smarttube.app.savedState")
+            .appendingPathComponent("Library/Saved Application State/com.ambronet.smarttube.savedState")
         try? FileManager.default.removeItem(at: savedState)
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         #endif

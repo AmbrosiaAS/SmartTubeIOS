@@ -44,7 +44,7 @@ final class MacWKHLSReplayRegressionUITests: XCTestCase {
         ]
         // macOS WindowGroup won't create a window if OS saved an empty window state.
         let savedState = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Saved Application State/com.void.smarttube.app.savedState")
+            .appendingPathComponent("Library/Saved Application State/com.ambronet.smarttube.savedState")
         try? FileManager.default.removeItem(at: savedState)
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launch()

@@ -68,6 +68,11 @@ final class TOSPlayerViewModel: NSObject {
     var playerState: YTPlayerState = .unstarted
     var currentTime: Double = 0
     var duration: Double = 0
+    /// Target of a seek issued to the web bridge that ticks haven't confirmed yet
+    /// (nil when none). Relative seeks chain off this instead of `currentTime`,
+    /// which lags until the next tick — mirrors PlaybackViewModel.pendingSeekTarget.
+    /// Cleared by the tick handler once the reported time converges on it.
+    var pendingSeekTarget: Double?
     var isReady: Bool = false
     /// Non-nil when the player encounters an error that requires falling back.
     var playerError: TOSPlayerError? = nil
@@ -436,6 +441,23 @@ final class TOSPlayerViewModel: NSObject {
 
     func seekTo(_ seconds: Double) {
         eval("seekTo(\(seconds))", "(function(){var v=document.querySelector('video');var ifr=document.querySelectorAll('iframe').length;if(v){v.currentTime=\(seconds);}return {found: !!v, iframes: ifr, currentTime: v ? v.currentTime : null};})();")
+    }
+
+    /// Relative seek that chains off any unconfirmed in-flight seek target, so
+    /// rapid successive remote skips (CarPlay/lock-screen presses) accumulate to
+    /// N × interval instead of each re-basing on a `currentTime` the web bridge
+    /// hasn't updated yet. `currentTime` is set optimistically — the next tick
+    /// confirms it once the page applies the seek.
+    func seekRelative(seconds: Double) {
+        let base = pendingSeekTarget ?? currentTime
+        var target = max(0, base + seconds)
+        if duration > 0 { target = min(target, duration) }
+        pendingSeekTarget = target
+        currentTime = target
+        seekTo(target)
+        #if os(iOS)
+        updateNowPlayingPlayback()
+        #endif
     }
 
     func setPlaybackRate(_ rate: Double) {

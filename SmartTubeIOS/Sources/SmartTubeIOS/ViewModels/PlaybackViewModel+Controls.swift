@@ -78,17 +78,34 @@ extension PlaybackViewModel {
     /// want the overlay to appear (user-initiated gestures) must call
     /// `showControls()` themselves after this.
     public func seek(to time: TimeInterval) {
+        // Record the in-flight target so overlapping relative seeks chain off it
+        // (see seekRelative). Only the completion of the *latest* seek clears it —
+        // superseded seeks must not reset the chain early.
+        pendingSeekTarget = time
         player.seek(
             to: CMTime(seconds: time, preferredTimescale: 600),
             toleranceBefore: .zero,
             toleranceAfter: .zero
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.currentTime = time }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.currentTime = time
+                if self.pendingSeekTarget == time { self.pendingSeekTarget = nil }
+                #if canImport(UIKit)
+                // CarPlay / lock screen extrapolate the playback position from the
+                // last elapsed-time value pushed to MPNowPlayingInfoCenter — without
+                // a push here their progress bars drift after every seek.
+                self.updateNowPlayingPlayback()
+                #endif
+            }
         }
     }
 
     public func seekRelative(seconds: TimeInterval) {
-        seek(to: max(0, currentTime + seconds))
+        let base = pendingSeekTarget ?? currentTime
+        var target = max(0, base + seconds)
+        if duration > 0 { target = min(target, duration) }
+        seek(to: target)
         showControls()
     }
 

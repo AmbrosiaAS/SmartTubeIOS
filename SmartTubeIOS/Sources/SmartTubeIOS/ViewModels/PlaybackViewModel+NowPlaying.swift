@@ -8,6 +8,11 @@ import SmartTubeIOSCore
 
 private let playerLog = CrashlyticsLogger(category: "Player")
 
+/// Seconds skipped by every remote seek command: the CarPlay/lock-screen skip
+/// buttons (badge + actual seek) AND the next/previous-track commands, which are
+/// deliberately remapped to relative seeks — see setupRemoteCommandCenter().
+let remoteSkipInterval: TimeInterval = 15
+
 // File-scope factory — deliberately nonisolated so MPMediaItemArtwork can invoke the
 // returned closure from MediaPlayer's internal serial queue without triggering the
 // Swift 6 actor-isolation assertion (_swift_task_checkIsolatedSwift → EXC_BREAKPOINT).
@@ -106,15 +111,15 @@ extension PlaybackViewModel {
             Task { @MainActor [weak self] in self?.togglePlayPause() }
             return .success
         }
-        center.skipForwardCommand.preferredIntervals = [10]
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
         center.skipForwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
             Task { @MainActor [weak self] in self?.seekRelative(seconds: interval) }
             return .success
         }
-        center.skipBackwardCommand.preferredIntervals = [10]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
         center.skipBackwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
             Task { @MainActor [weak self] in self?.seekRelative(seconds: -interval) }
             return .success
         }
@@ -123,12 +128,19 @@ extension PlaybackViewModel {
             Task { @MainActor [weak self] in self?.seek(to: position) }
             return .success
         }
+        // Next/previous-track are deliberately ±15 s seeks, NOT video navigation:
+        // CarPlay steering-wheel skip buttons (and AirPods presses) arrive as these
+        // commands, and in-car the wanted behavior is repeated presses accumulating
+        // N × 15 s within the current video. Always enabled — a seek is valid even
+        // when no queue/history exists (queue navigation remains available in-app).
+        center.nextTrackCommand.isEnabled = true
         center.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in self?.playNext() }
+            Task { @MainActor [weak self] in self?.seekRelative(seconds: remoteSkipInterval) }
             return .success
         }
+        center.previousTrackCommand.isEnabled = true
         center.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in self?.playPrevious() }
+            Task { @MainActor [weak self] in self?.seekRelative(seconds: -remoteSkipInterval) }
             return .success
         }
     }
@@ -186,10 +198,9 @@ extension PlaybackViewModel {
             }
         }
 
-        // Update next/previous button enabled state.
-        let center = MPRemoteCommandCenter.shared()
-        center.nextTrackCommand.isEnabled = hasNext
-        center.previousTrackCommand.isEnabled = hasPrevious
+        // next/previousTrackCommand stay always-enabled — they are ±15 s seek
+        // buttons (see setupRemoteCommandCenter), not queue navigation, so they
+        // must NOT be gated on hasNext/hasPrevious here.
 
         setNowPlayingInfo(nowPlayingInfoCache)
     }

@@ -54,31 +54,42 @@ extension TOSPlayerViewModel {
             if self.playerState == .playing { self.pause() } else { self.play() }
             return .success
         }
-        center.skipForwardCommand.preferredIntervals = [10]
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
         center.skipForwardCommand.addTarget { [weak self] event in
             guard let self else { return .success }
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
-            self.seekTo(self.currentTime + interval)
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+            self.seekRelative(seconds: interval)
             return .success
         }
-        center.skipBackwardCommand.preferredIntervals = [10]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
         center.skipBackwardCommand.addTarget { [weak self] event in
             guard let self else { return .success }
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
-            self.seekTo(max(0, self.currentTime - interval))
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+            self.seekRelative(seconds: -interval)
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else { return .success }
-            self?.seekTo(position)
+            guard let self,
+                  let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else { return .success }
+            self.pendingSeekTarget = position
+            self.currentTime = position
+            self.seekTo(position)
+            self.updateNowPlayingPlayback()
             return .success
         }
+        // Next/previous-track are ±15 s seeks, NOT video navigation — mirrors
+        // PlaybackViewModel.setupRemoteCommandCenter(): CarPlay steering-wheel
+        // skip buttons and AirPods presses arrive as these commands, and repeated
+        // presses must accumulate N × 15 s within the current video. Always
+        // enabled — a seek is valid even with no queue/history.
+        center.nextTrackCommand.isEnabled = true
         center.nextTrackCommand.addTarget { [weak self] _ in
-            self?.playNext()
+            self?.seekRelative(seconds: remoteSkipInterval)
             return .success
         }
+        center.previousTrackCommand.isEnabled = true
         center.previousTrackCommand.addTarget { [weak self] _ in
-            self?.playPrevious()
+            self?.seekRelative(seconds: -remoteSkipInterval)
             return .success
         }
     }
@@ -124,9 +135,9 @@ extension TOSPlayerViewModel {
             }
         }
 
-        let center = MPRemoteCommandCenter.shared()
-        center.nextTrackCommand.isEnabled = hasNext
-        center.previousTrackCommand.isEnabled = hasPrevious
+        // next/previousTrackCommand stay always-enabled — they are ±15 s seek
+        // buttons (see setupRemoteCommandCenter), not queue navigation, so they
+        // must NOT be gated on hasNext/hasPrevious here.
 
         setNowPlayingInfo(nowPlayingInfoCache)
     }

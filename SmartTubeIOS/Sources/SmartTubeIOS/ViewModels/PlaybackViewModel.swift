@@ -77,6 +77,11 @@ public final class PlaybackViewModel {
     public internal(set) var videoEnded: Bool = false
     public internal(set) var currentTime: TimeInterval = 0
     public internal(set) var duration: TimeInterval = 0
+    /// Target of the seek currently in flight (nil when none). Relative seeks chain
+    /// off this instead of `currentTime`, which lags until the seek's completion
+    /// handler runs — otherwise rapid CarPlay/lock-screen skip presses each re-base
+    /// on the pre-seek position and N presses move far less than N × interval.
+    var pendingSeekTarget: TimeInterval?
 
     // MARK: - Forwarding computed properties (views unchanged)
 

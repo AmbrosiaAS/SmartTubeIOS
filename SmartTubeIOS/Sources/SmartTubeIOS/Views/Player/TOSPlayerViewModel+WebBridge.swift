@@ -148,6 +148,11 @@ extension TOSPlayerViewModel {
         case "tick":
             let t = (json["t"] as? Double) ?? 0
             let s = (json["state"] as? Int) ?? 999
+            // A tick within 2 s of an unconfirmed seek target means the page has
+            // applied the seek — end the relative-seek chain (see seekRelative()).
+            if let pending = pendingSeekTarget, abs(t - pending) < 2 {
+                pendingSeekTarget = nil
+            }
             currentTime = t
             // "ready" fires on the very first poll, before video.duration has
             // necessarily loaded (the video starts muted for autoplay-policy

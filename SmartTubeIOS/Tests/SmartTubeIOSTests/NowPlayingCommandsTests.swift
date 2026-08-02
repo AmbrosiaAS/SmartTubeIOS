@@ -5,71 +5,100 @@ import Testing
 #if canImport(UIKit)
 import MediaPlayer
 
-/// Tests that setupRemoteCommandCenter registers next/previous track commands and
-/// that updateNowPlayingInfo correctly reflects hasNext/hasPrevious in the enabled
-/// state of those commands.
+/// Tests for the remote-command wiring in setupRemoteCommandCenter() /
+/// updateNowPlayingInfo().
 ///
-/// Regression test for Task #233: lock screen Now Playing widget was missing
-/// next/previous buttons because nextTrackCommand / previousTrackCommand were never
-/// registered in setupRemoteCommandCenter().
+/// History: originally regression tests for Task #233 (next/previous track
+/// commands were never registered). The expected behavior changed with the
+/// CarPlay steering-wheel fix: next/previous-track are now remapped to ±15 s
+/// seeks and stay ALWAYS enabled — they must no longer be gated on
+/// hasNext/hasPrevious, which left them dead for the first video of a session.
 @MainActor
 struct NowPlayingCommandsTests {
 
     // MARK: - Next/previous command registration
 
     /// After setupRemoteCommandCenter(), nextTrackCommand must be registered and
-    /// isEnabled must start false (no queue yet).
-    @Test func nextTrackCommandRegisteredAfterSetup() {
+    /// enabled even with no queue — it is a +15 s seek button, not queue navigation.
+    @Test func nextTrackCommandAlwaysEnabledAfterSetup() {
         let vm = PlaybackViewModel()
         vm.setupRemoteCommandCenter()
-        let cmd = MPRemoteCommandCenter.shared().nextTrackCommand
-        // The command should exist (non-nil isEnabled is always accessible).
-        // The key assertion: we successfully called addTarget without crashing —
-        // verified by the fact we reached this line — and isEnabled is false
-        // because hasNext defaults to false.
-        #expect(cmd.isEnabled == false)
+        #expect(MPRemoteCommandCenter.shared().nextTrackCommand.isEnabled == true)
     }
 
-    @Test func previousTrackCommandRegisteredAfterSetup() {
+    @Test func previousTrackCommandAlwaysEnabledAfterSetup() {
         let vm = PlaybackViewModel()
         vm.setupRemoteCommandCenter()
-        let cmd = MPRemoteCommandCenter.shared().previousTrackCommand
-        #expect(cmd.isEnabled == false)
+        #expect(MPRemoteCommandCenter.shared().previousTrackCommand.isEnabled == true)
     }
 
-    // MARK: - isEnabled reflects hasNext / hasPrevious
-
-    /// When hasNext is true and updateNowPlayingInfo() is called,
-    /// nextTrackCommand.isEnabled must be true.
-    @Test func nextTrackCommandEnabledWhenHasNext() {
+    /// updateNowPlayingInfo() must NOT gate next/previous on hasNext/hasPrevious —
+    /// the old gating disabled the CarPlay steering-wheel buttons whenever the
+    /// history stack was empty (i.e. the first video of every drive).
+    @Test func trackCommandsStayEnabledRegardlessOfQueueState() {
         let vm = PlaybackViewModel()
         vm.setupRemoteCommandCenter()
 
         // Provide a minimal video so updateNowPlayingInfo() doesn't bail early.
         let video = Video(id: "testVideo", title: "Test", channelTitle: "Chan")
         vm.currentVideo = video
-        vm.hasNext = true
+        vm.hasNext = false
         vm.hasPrevious = false
 
         vm.updateNowPlayingInfo()
 
         #expect(MPRemoteCommandCenter.shared().nextTrackCommand.isEnabled == true)
-        #expect(MPRemoteCommandCenter.shared().previousTrackCommand.isEnabled == false)
+        #expect(MPRemoteCommandCenter.shared().previousTrackCommand.isEnabled == true)
     }
 
-    @Test func previousTrackCommandEnabledWhenHasPrevious() {
+    // MARK: - Skip interval
+
+    /// The CarPlay/lock-screen skip buttons must advertise the 15 s interval.
+    @Test func skipCommandsAdvertiseFifteenSeconds() {
         let vm = PlaybackViewModel()
         vm.setupRemoteCommandCenter()
+        let center = MPRemoteCommandCenter.shared()
+        #expect(center.skipForwardCommand.preferredIntervals == [15])
+        #expect(center.skipBackwardCommand.preferredIntervals == [15])
+    }
 
-        let video = Video(id: "testVideo2", title: "Test 2", channelTitle: "Chan")
-        vm.currentVideo = video
-        vm.hasNext = false
-        vm.hasPrevious = true
+    // MARK: - Rapid relative seeks accumulate
 
-        vm.updateNowPlayingInfo()
+    /// Successive seekRelative calls must chain off the in-flight seek target, not
+    /// currentTime (which only updates in the seek's async completion). Without
+    /// this, N rapid CarPlay presses moved far less than N × 15 s.
+    @Test func rapidRelativeSeeksAccumulate() {
+        let vm = PlaybackViewModel()
+        vm.currentTime = 100
 
-        #expect(MPRemoteCommandCenter.shared().nextTrackCommand.isEnabled == false)
-        #expect(MPRemoteCommandCenter.shared().previousTrackCommand.isEnabled == true)
+        vm.seekRelative(seconds: 15)
+        vm.seekRelative(seconds: 15)
+        vm.seekRelative(seconds: 15)
+
+        #expect(vm.pendingSeekTarget == 145)
+    }
+
+    /// Accumulated forward seeks must clamp to the video duration.
+    @Test func relativeSeekClampsToDuration() {
+        let vm = PlaybackViewModel()
+        vm.currentTime = 100
+        vm.duration = 120
+
+        vm.seekRelative(seconds: 15)
+        vm.seekRelative(seconds: 15)
+
+        #expect(vm.pendingSeekTarget == 120)
+    }
+
+    /// Accumulated backward seeks must clamp to zero.
+    @Test func relativeSeekClampsToZero() {
+        let vm = PlaybackViewModel()
+        vm.currentTime = 20
+
+        vm.seekRelative(seconds: -15)
+        vm.seekRelative(seconds: -15)
+
+        #expect(vm.pendingSeekTarget == 0)
     }
 
     // MARK: - Artwork fetch starts on new video

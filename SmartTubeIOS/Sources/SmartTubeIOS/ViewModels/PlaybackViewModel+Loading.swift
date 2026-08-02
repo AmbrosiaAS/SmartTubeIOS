@@ -358,6 +358,7 @@ extension PlaybackViewModel {
         isLoading = true
         stallCount = 0
         firstRapidStallTime = nil
+        pendingSeekTarget = nil
         needsQuickStartup = true
         // Note: isLoading = false is set in the AVPlayerItem .readyToPlay observer so the
         // spinner stays visible until the first frame is actually ready. It was previously
@@ -1312,11 +1313,9 @@ extension PlaybackViewModel {
             playerLog.notice("[chapters] none for \(video.id) (nextInfo chapters=\(nextInfo?.chapters.count ?? -1))")
         }
 
-        // hasNext is now fully resolved (related videos + queue fallback). Update the
-        // lock-screen now-playing info so nextTrackCommand.isEnabled reflects the real
-        // state. Without this call the next/prev buttons only appear if hasNext was
-        // already true during phase-1 (playlist videos); for home-feed autoplay the
-        // buttons are permanently missing.
+        // Refresh the lock-screen now-playing info now that phase-2 metadata is
+        // fully resolved. (next/previousTrackCommand no longer depend on hasNext —
+        // they are always-enabled ±15 s seek buttons, see setupRemoteCommandCenter.)
         #if canImport(UIKit)
         updateNowPlayingInfo()
         #endif

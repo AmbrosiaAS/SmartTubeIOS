@@ -39,19 +39,62 @@ public final class CarPlayBridge {
         self.tosState = tosState
     }
 
-    /// Starts playback of `video` on the native AVPlayer pipeline.
+    // MARK: - Playback state
+
+    /// The video currently loaded in the AVPlayer pipeline, if any.
+    var currentVideoId: String? { playerState?.vm.currentVideoId }
+
+    /// True when the AVPlayer pipeline is actively playing.
+    var isPlaying: Bool { playerState?.vm.isPlaying ?? false }
+
+    /// True when a video is loaded (playing or paused) — i.e. the system
+    /// Now Playing screen has real content to show.
+    var hasActiveVideo: Bool { playerState?.currentVideo != nil }
+
+    // MARK: - Playback
+
+    /// Starts `videos[startIndex]` on the native AVPlayer pipeline and seeds
+    /// the Current Queue with the whole list so playback auto-advances to the
+    /// next video when one ends — no glances at the screen needed while driving.
     ///
     /// CarPlay always uses the AVPlayer pipeline rather than PlayerRouter's
     /// default TOS web player: only AVPlayer drives MPNowPlayingInfoCenter and
     /// keeps playing with the phone locked, both of which CarPlay requires.
     /// The two pipelines are mutually exclusive (see PlayerRouter), so any
     /// active TOS playback is stopped first.
-    func play(video: Video) {
-        guard let playerState else { return }
+    func play(videos: [Video], startIndex: Int) {
+        guard let playerState, videos.indices.contains(startIndex) else { return }
         if let tosState, tosState.presentation != .hidden {
             tosState.stop()
         }
-        playerState.play(video: video)
+        Task { @MainActor in
+            await CurrentQueueStore.shared.replaceAll(with: videos)
+            // videoAt(index:) tags the video with the queue playlistId, which is
+            // what PlaybackViewModel.handlePlaybackEnd keys auto-advance on.
+            let queued = await CurrentQueueStore.shared.videoAt(index: startIndex) ?? videos[startIndex]
+            playerState.play(video: queued)
+        }
+    }
+
+    // MARK: - Auth
+
+    /// Ensures the API has fresh credentials before a CarPlay fetch.
+    ///
+    /// On a cold start from the head unit the SwiftUI scene never attaches, so
+    /// AppEntry's onChange handlers that normally propagate the token never run,
+    /// and the keychain session may still be mid-refresh. Kick the refresh and
+    /// wait briefly for it — same 5 s pattern AppEntry uses for deep links.
+    func refreshAuthIfNeeded() async {
+        guard let authService, let api else { return }
+        if authService.isSignedIn && authService.accessToken == nil {
+            authService.handleForeground()
+            for _ in 0..<50 {
+                try? await Task.sleep(nanoseconds: 100_000_000)   // 100 ms
+                if authService.accessToken != nil { break }
+            }
+        }
+        await api.setAuthToken(authService.accessToken)
+        await api.setSAPISID(authService.sapisid)
     }
 }
 #endif

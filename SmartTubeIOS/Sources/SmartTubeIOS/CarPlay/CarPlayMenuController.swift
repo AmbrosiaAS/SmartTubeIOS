@@ -45,9 +45,14 @@ final class CarPlayMenuController {
 
     func installRootTemplate() {
         let root = CPListTemplate(title: "SmartTube", sections: [makeRootSection()])
-        interfaceController.setRootTemplate(root, animated: true) { [log] _, error in
+        interfaceController.setRootTemplate(root, animated: true) { [weak self, log] success, error in
             if let error {
                 log.error("[CarPlay] setRootTemplate failed: \(error.localizedDescription)")
+            }
+            // Connecting the car mid-listen should land on the Now Playing
+            // screen, not the menu — matches every other CarPlay audio app.
+            if success, CarPlayBridge.shared.isPlaying {
+                self?.showNowPlaying()
             }
         }
     }
@@ -95,33 +100,33 @@ final class CarPlayMenuController {
     }
 
     private func populate(_ template: CPListTemplate, source: Source) async {
-        guard let api = CarPlayBridge.shared.api else {
+        guard CarPlayBridge.shared.api != nil else {
             template.emptyViewTitleVariants = ["SmartTube is unavailable"]
             template.emptyViewSubtitleVariants = ["Open the app on your iPhone once, then reconnect."]
             return
         }
-        // The auth token normally reaches the API through AppEntry's SwiftUI
-        // onChange handlers, but those never fire when the app is launched
-        // straight from the head unit without the phone scene ever attaching.
-        // Push the current credentials explicitly before fetching.
-        if let auth = CarPlayBridge.shared.authService {
-            await api.setAuthToken(auth.accessToken)
-            await api.setSAPISID(auth.sapisid)
-        }
+        // On a head-unit-only launch the SwiftUI scene never attaches, so the
+        // token must be pushed (and possibly refreshed) explicitly here.
+        await CarPlayBridge.shared.refreshAuthIfNeeded()
+        guard let api = CarPlayBridge.shared.api else { return }
         do {
             let group: VideoGroup
             switch source {
             case .history:    group = try await api.fetchHistory()
             case .watchLater: group = try await api.fetchPlaylistVideos(playlistId: "WL")
             }
-            let videos = Array(group.videos.prefix(Self.maxRows))
+            // Respect the head unit's own row limit as well as our rotary cap.
+            let rowCap = min(Self.maxRows, CPListTemplate.maximumItemCount)
+            let videos = Array(group.videos.prefix(rowCap))
             log.notice("[CarPlay] \(source.title, privacy: .public) loaded \(videos.count) videos")
             guard !videos.isEmpty else {
                 template.emptyViewTitleVariants = ["No videos"]
                 template.emptyViewSubtitleVariants = ["Sign in on your iPhone to see your \(source.title)."]
                 return
             }
-            let items = videos.map { makeVideoItem($0) }
+            let items = videos.enumerated().map { index, video in
+                makeVideoItem(video, at: index, in: videos)
+            }
             template.updateSections([CPListSection(items: items)])
             loadThumbnails(items: items, videos: videos)
         } catch {
@@ -131,16 +136,22 @@ final class CarPlayMenuController {
         }
     }
 
-    private func makeVideoItem(_ video: Video) -> CPListItem {
-        var detail = video.channelTitle
-        let duration = video.formattedDuration
-        if !duration.isEmpty {
-            detail = detail.isEmpty ? duration : "\(detail) · \(duration)"
-        }
-        let item = CPListItem(text: video.title, detailText: detail)
+    private func makeVideoItem(_ video: Video, at index: Int, in videos: [Video]) -> CPListItem {
+        let item = CPListItem(text: video.title,
+                              detailText: CarPlayItemFormatting.detailText(for: video))
         item.playingIndicatorLocation = .trailing
-        item.handler = { [weak self] _, completion in
-            CarPlayBridge.shared.play(video: video)
+        item.isPlaying = video.id == CarPlayBridge.shared.currentVideoId
+        item.handler = { [weak self] selected, completion in
+            // Whole visible list becomes the queue so playback auto-advances.
+            CarPlayBridge.shared.play(videos: videos, startIndex: index)
+            if let template = self?.interfaceController.topTemplate as? CPListTemplate {
+                for section in template.sections {
+                    for other in section.items {
+                        (other as? CPListItem)?.isPlaying = false
+                    }
+                }
+            }
+            (selected as? CPListItem)?.isPlaying = true
             self?.showNowPlaying()
             completion()
         }
@@ -171,6 +182,23 @@ final class CarPlayMenuController {
     // MARK: - Now Playing
 
     private func showNowPlaying() {
+        // An empty system Now Playing screen is a dead end on a rotary head
+        // unit; explain instead when nothing has been played yet.
+        guard CarPlayBridge.shared.hasActiveVideo else {
+            let alert = CPAlertTemplate(
+                titleVariants: [
+                    "Nothing is playing yet. Pick a video from History or Watch Later.",
+                    "Nothing playing yet",
+                ],
+                actions: [
+                    CPAlertAction(title: "OK", style: .cancel) { [weak self] _ in
+                        self?.interfaceController.dismissTemplate(animated: true, completion: nil)
+                    }
+                ]
+            )
+            interfaceController.presentTemplate(alert, animated: true, completion: nil)
+            return
+        }
         let nowPlaying = CPNowPlayingTemplate.shared
         guard interfaceController.topTemplate !== nowPlaying else { return }
         if interfaceController.templates.contains(where: { $0 === nowPlaying }) {

@@ -992,7 +992,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = SmartTubeApp/SmartTubeApp.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "SmartTubeApp/SmartTubeApp-CarPlay.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "SmartTubeApp/SmartTubeApp-macOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -1469,7 +1468,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = SmartTubeApp/SmartTubeApp.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "SmartTubeApp/SmartTubeApp-CarPlay.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "SmartTubeApp/SmartTubeApp-macOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;

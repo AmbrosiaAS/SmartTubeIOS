@@ -58,6 +58,7 @@ extension TOSPlayerViewModel {
         center.skipForwardCommand.addTarget { [weak self] event in
             guard let self else { return .success }
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+            RemoteCommandDiagnostics.log("TOS skipForward interval=\(interval)s t=\(Int(self.currentTime))s")
             self.seekRelative(seconds: interval)
             return .success
         }
@@ -65,6 +66,7 @@ extension TOSPlayerViewModel {
         center.skipBackwardCommand.addTarget { [weak self] event in
             guard let self else { return .success }
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+            RemoteCommandDiagnostics.log("TOS skipBackward interval=\(interval)s t=\(Int(self.currentTime))s")
             self.seekRelative(seconds: -interval)
             return .success
         }
@@ -84,12 +86,16 @@ extension TOSPlayerViewModel {
         // enabled — a seek is valid even with no queue/history.
         center.nextTrackCommand.isEnabled = true
         center.nextTrackCommand.addTarget { [weak self] _ in
-            self?.seekRelative(seconds: remoteSkipInterval)
+            guard let self else { return .success }
+            RemoteCommandDiagnostics.log("TOS nextTrack → +\(Int(remoteSkipInterval))s t=\(Int(self.currentTime))s")
+            self.seekRelative(seconds: remoteSkipInterval)
             return .success
         }
         center.previousTrackCommand.isEnabled = true
         center.previousTrackCommand.addTarget { [weak self] _ in
-            self?.seekRelative(seconds: -remoteSkipInterval)
+            guard let self else { return .success }
+            RemoteCommandDiagnostics.log("TOS previousTrack → -\(Int(remoteSkipInterval))s t=\(Int(self.currentTime))s")
+            self.seekRelative(seconds: -remoteSkipInterval)
             return .success
         }
     }

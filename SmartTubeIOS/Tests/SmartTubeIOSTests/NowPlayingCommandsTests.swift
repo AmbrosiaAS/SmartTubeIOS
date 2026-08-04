@@ -101,6 +101,21 @@ struct NowPlayingCommandsTests {
         #expect(vm.pendingSeekTarget == 0)
     }
 
+    // MARK: - Remote-command diagnostics caps
+
+    /// Breadcrumbing must stop at the per-session cap so a long drive can't
+    /// spam the Crashlytics breadcrumb buffer or Firebase quota.
+    @Test func remoteDiagnosticsBreadcrumbsCapPerSession() {
+        RemoteCommandDiagnostics.resetForTesting()
+        for i in 0..<(RemoteCommandDiagnostics.breadcrumbCap + 50) {
+            RemoteCommandDiagnostics.log("test breadcrumb \(i)")
+        }
+        #expect(RemoteCommandDiagnostics.breadcrumbCount == RemoteCommandDiagnostics.breadcrumbCap)
+        // The 60 s flush timer is armed but has not fired within this test.
+        #expect(RemoteCommandDiagnostics.reportCount == 0)
+        RemoteCommandDiagnostics.resetForTesting()
+    }
+
     // MARK: - Artwork fetch starts on new video
 
     /// updateNowPlayingInfo() should set cachedArtworkVideoID when a video with a

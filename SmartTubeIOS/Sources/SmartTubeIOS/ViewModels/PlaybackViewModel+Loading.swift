@@ -311,6 +311,7 @@ extension PlaybackViewModel {
         updateNowPlayingPlayback()
         // Deregister from the global command center so a suspended VM never
         // handles lock screen Play while another VM is the active player.
+        RemoteCommandDiagnostics.log("commands deregistered (suspend) t=\(Int(currentTime))s")
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.removeTarget(nil)
         center.pauseCommand.removeTarget(nil)
@@ -320,6 +321,8 @@ extension PlaybackViewModel {
         center.changePlaybackPositionCommand.removeTarget(nil)
         center.nextTrackCommand.removeTarget(nil)
         center.previousTrackCommand.removeTarget(nil)
+        center.seekForwardCommand.removeTarget(nil)
+        center.seekBackwardCommand.removeTarget(nil)
         #endif
     }
 
@@ -1184,6 +1187,7 @@ extension PlaybackViewModel {
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = false
         clearNowPlayingInfo()
+        RemoteCommandDiagnostics.log("commands deregistered (stop)")
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.removeTarget(nil)
         center.pauseCommand.removeTarget(nil)
@@ -1193,6 +1197,8 @@ extension PlaybackViewModel {
         center.changePlaybackPositionCommand.removeTarget(nil)
         center.nextTrackCommand.removeTarget(nil)
         center.previousTrackCommand.removeTarget(nil)
+        center.seekForwardCommand.removeTarget(nil)
+        center.seekBackwardCommand.removeTarget(nil)
         #endif
         if let obs = audioSessionObserver {
             NotificationCenter.default.removeObserver(obs)

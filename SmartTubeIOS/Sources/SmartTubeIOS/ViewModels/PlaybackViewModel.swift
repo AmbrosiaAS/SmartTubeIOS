@@ -514,6 +514,8 @@ public final class PlaybackViewModel {
         center.changePlaybackPositionCommand.removeTarget(nil)
         center.nextTrackCommand.removeTarget(nil)
         center.previousTrackCommand.removeTarget(nil)
+        center.seekForwardCommand.removeTarget(nil)
+        center.seekBackwardCommand.removeTarget(nil)
         #endif
     }
 

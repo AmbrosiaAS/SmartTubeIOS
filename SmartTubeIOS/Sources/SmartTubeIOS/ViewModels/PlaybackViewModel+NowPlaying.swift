@@ -89,10 +89,15 @@ extension PlaybackViewModel {
         center.changePlaybackPositionCommand.removeTarget(nil)
         center.nextTrackCommand.removeTarget(nil)
         center.previousTrackCommand.removeTarget(nil)
+        center.seekForwardCommand.removeTarget(nil)
+        center.seekBackwardCommand.removeTarget(nil)
+
+        RemoteCommandDiagnostics.log("setupRemoteCommandCenter (AVPlayer VM)")
 
         center.playCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                RemoteCommandDiagnostics.log("play at t=\(Int(currentTime))s")
                 player.rate = Float(settings.playbackSpeed)
                 isPlaying = true
                 updateNowPlayingPlayback()
@@ -101,31 +106,49 @@ extension PlaybackViewModel {
         }
         center.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.player.pause()
-                self?.isPlaying = false
-                self?.updateNowPlayingPlayback()
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("pause at t=\(Int(currentTime))s")
+                player.pause()
+                isPlaying = false
+                updateNowPlayingPlayback()
             }
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in self?.togglePlayPause() }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("togglePlayPause at t=\(Int(currentTime))s")
+                togglePlayPause()
+            }
             return .success
         }
         center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
         center.skipForwardCommand.addTarget { [weak self] event in
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
-            Task { @MainActor [weak self] in self?.seekRelative(seconds: interval) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("skipForward interval=\(interval)s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                seekRelative(seconds: interval)
+            }
             return .success
         }
         center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
         center.skipBackwardCommand.addTarget { [weak self] event in
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
-            Task { @MainActor [weak self] in self?.seekRelative(seconds: -interval) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("skipBackward interval=\(interval)s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                seekRelative(seconds: -interval)
+            }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime ?? 0
-            Task { @MainActor [weak self] in self?.seek(to: position) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("changePlaybackPosition to=\(Int(position))s from t=\(Int(currentTime))s")
+                seek(to: position)
+            }
             return .success
         }
         // Next/previous-track are deliberately ±15 s seeks, NOT video navigation:
@@ -135,12 +158,42 @@ extension PlaybackViewModel {
         // when no queue/history exists (queue navigation remains available in-app).
         center.nextTrackCommand.isEnabled = true
         center.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in self?.seekRelative(seconds: remoteSkipInterval) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("nextTrack → +\(Int(remoteSkipInterval))s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                seekRelative(seconds: remoteSkipInterval)
+            }
             return .success
         }
         center.previousTrackCommand.isEnabled = true
         center.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in self?.seekRelative(seconds: -remoteSkipInterval) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("previousTrack → -\(Int(remoteSkipInterval))s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                seekRelative(seconds: -remoteSkipInterval)
+            }
+            return .success
+        }
+        // Some head units deliver their seek buttons as seekForward/seekBackward
+        // (scan begin/end pairs) rather than skip or track commands. These were
+        // never registered, so such buttons silently did nothing. Treat "begin"
+        // as a single ±15 s skip; "end" is logged for diagnosis but ignored.
+        center.seekForwardCommand.addTarget { [weak self] event in
+            let type = (event as? MPSeekCommandEvent)?.type
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("seekForward(\(type == .beginSeeking ? "begin" : "end")) t=\(Int(currentTime))s")
+                if type == .beginSeeking { seekRelative(seconds: remoteSkipInterval) }
+            }
+            return .success
+        }
+        center.seekBackwardCommand.addTarget { [weak self] event in
+            let type = (event as? MPSeekCommandEvent)?.type
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                RemoteCommandDiagnostics.log("seekBackward(\(type == .beginSeeking ? "begin" : "end")) t=\(Int(currentTime))s")
+                if type == .beginSeeking { seekRelative(seconds: -remoteSkipInterval) }
+            }
             return .success
         }
     }

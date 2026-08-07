@@ -152,5 +152,71 @@ struct NowPlayingCommandsTests {
         #expect(vm.cachedArtwork != nil)
         #expect(vm.cachedArtworkVideoID == "sameVideo")
     }
+
+    // MARK: - Now Playing playback-state publishing
+
+    private func cachedElapsed(_ vm: PlaybackViewModel) -> Double? {
+        (vm.nowPlayingInfoCache[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? NSNumber)?.doubleValue
+    }
+
+    /// updateNowPlayingPlayback() must backfill MPMediaItemPropertyPlaybackDuration
+    /// once duration resolves: at load time updateNowPlayingInfo() runs with
+    /// duration == 0 and omits the key, and without it the system renders no
+    /// progress bar at all — the bar used to stay missing until the next full
+    /// metadata publish happened to fire.
+    @Test func playbackUpdateBackfillsDurationOnceKnown() {
+        let vm = PlaybackViewModel()
+        vm.currentVideo = Video(id: "durVideo", title: "Dur", channelTitle: "Chan")
+        vm.updateNowPlayingInfo() // duration == 0 → key omitted
+        #expect(vm.nowPlayingInfoCache[MPMediaItemPropertyPlaybackDuration] == nil)
+
+        vm.duration = 300
+        vm.updateNowPlayingPlayback()
+        #expect((vm.nowPlayingInfoCache[MPMediaItemPropertyPlaybackDuration] as? NSNumber)?.doubleValue == 300)
+    }
+
+    /// While duration is unknown (0 — also the live-stream case, where the item
+    /// duration is indefinite and video.duration is nil), updateNowPlayingPlayback()
+    /// must NOT invent a finite duration.
+    @Test func playbackUpdateDoesNotInventDurationWhenUnknown() {
+        let vm = PlaybackViewModel()
+        vm.currentVideo = Video(id: "liveVideo", title: "Live", channelTitle: "Chan")
+        vm.updateNowPlayingInfo()
+
+        vm.updateNowPlayingPlayback()
+        #expect(vm.nowPlayingInfoCache[MPMediaItemPropertyPlaybackDuration] == nil)
+    }
+
+    /// The periodic elapsed-time refresh must publish on the first tick, then
+    /// throttle to nowPlayingElapsedRefreshInterval — NOT write the info center
+    /// on every 0.5 s time-observer tick.
+    @Test func elapsedRefreshIsThrottled() {
+        let vm = PlaybackViewModel()
+        vm.currentVideo = Video(id: "throttleVideo", title: "Throttle", channelTitle: "Chan")
+        vm.updateNowPlayingInfo()
+
+        let t0 = Date()
+        vm.currentTime = 10
+        vm.refreshNowPlayingElapsedTimeIfNeeded(now: t0) // first tick → publishes
+        #expect(cachedElapsed(vm) == 10)
+
+        vm.currentTime = 11
+        vm.refreshNowPlayingElapsedTimeIfNeeded(now: t0.addingTimeInterval(1)) // inside window → throttled
+        #expect(cachedElapsed(vm) == 10)
+
+        vm.currentTime = 13
+        vm.refreshNowPlayingElapsedTimeIfNeeded(now: t0.addingTimeInterval(PlaybackViewModel.nowPlayingElapsedRefreshInterval))
+        #expect(cachedElapsed(vm) == 13)
+    }
+
+    /// After clearNowPlayingInfo() (stop) a straggling time-observer tick must
+    /// not resurrect a ghost Now Playing entry containing only elapsed/rate.
+    @Test func elapsedRefreshSkipsWhenNothingPublished() {
+        let vm = PlaybackViewModel()
+        vm.clearNowPlayingInfo()
+        vm.currentTime = 42
+        vm.refreshNowPlayingElapsedTimeIfNeeded(now: .distantFuture)
+        #expect(vm.nowPlayingInfoCache.isEmpty)
+    }
 }
 #endif

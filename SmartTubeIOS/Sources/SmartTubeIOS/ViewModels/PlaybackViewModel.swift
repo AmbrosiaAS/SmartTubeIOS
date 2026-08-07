@@ -427,6 +427,10 @@ public final class PlaybackViewModel {
     #if canImport(UIKit)
     @ObservationIgnored nonisolated(unsafe) var cachedArtwork: UIImage? = nil
     @ObservationIgnored var cachedArtworkVideoID: String? = nil
+    // Wall-clock time of the last periodic elapsed-time publish to
+    // MPNowPlayingInfoCenter (see refreshNowPlayingElapsedTimeIfNeeded).
+    // .distantPast so the first tick after load publishes immediately.
+    @ObservationIgnored var lastNowPlayingElapsedRefresh: Date = .distantPast
     #endif
 
     // MARK: - Dependencies

@@ -81,3 +81,9 @@ fabric.properties
 hs_err_pid*.log
 
 .claude/settings.local.json
+
+# Screenshots from the run-ios-simulator skill driver
+.simq-shots/
+
+# Claude Code worktrees — full duplicate checkouts, never commit these
+.claude/worktrees/

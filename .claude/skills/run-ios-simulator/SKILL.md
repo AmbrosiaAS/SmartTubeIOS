@@ -95,6 +95,93 @@ versus a genuinely dead display. A healthy external screen has a class-1 port
 with a live 800×480 `IOSurface`; a zombie one has none and `carkitd` logs
 `pixelSize {0, 0}` in a tight loop while pegging a core.
 
+There is a second, nastier variant: the 800×480 `IOSurface` **is** allocated but
+`carkitd` still loops `skipping partial session` thousands of times a minute and
+the framebuffer stays black. Only `carplay recover` (the menu dance) fixes
+either variant. **Everything else has been tried and does not work** — don't
+repeat these:
+
+| Attempted | Result |
+|---|---|
+| Rebooting the simulator device | No — the dead screen re-attaches unchanged |
+| Reinstalling / relaunching the app | No |
+| `killall Simulator` + `open -a Simulator` | No |
+| Toggling `DevicePreferences:<udid>:SimulatorExternalDisplay` (2714 ⇄ 0) via PlistBuddy + Simulator restart | No — the menu action does more than set this key |
+| `simctl spawn <udid> killall -9 carkitd` | Not possible — no `killall` in the sim runtime |
+
+Since `carplay recover` needs System Events, a lost macOS Automation grant blocks
+**all** CarPlay display recovery. If that happens, CarPlay verification has to move
+to a physical device (see below).
+
+### When macOS Automation is denied
+
+Symptom: `osascript` works (`1+1` → 2) but anything addressing System Events fails
+with `Not authorised to send Apple events to System Events. (-1743)`, and **no
+permission prompt ever appears**. Cause: the requesting binary is
+`~/Library/Application Support/Claude/claude-code/<version>/claude.app`, whose path
+carries the version number — after an update the stored TCC grant no longer matches,
+and because it is a bundled helper rather than a user-facing app macOS auto-denies
+instead of prompting. Privacy & Security → Automation can show the toggle **on** and
+it still fails, and `tccutil reset AppleEvents` does not restore it (verified).
+Disabling the Bash sandbox makes no difference either — it is not a sandbox issue.
+
+What still works without Apple events: builds, installs, `simctl launch`,
+`simctl io screenshot`, unit tests, and the simulator's own gesture injection
+(XcodeBuildMCP `gesture`/`button`) — though gesture travel is capped at 200 px, too
+short to open the app switcher. What does NOT work: reading the CarPlay AXGroup,
+clicking the CarPlay display, and the CarPlay recover menu dance. XcodeBuildMCP's
+accessibility snapshot is **not** an alternative — it only covers the main display
+(213 elements returned, all phone UI, no CarPlay rows).
+
+### Driving CarPlay templates without any UI input
+
+Because of all the above, `CarPlayMenuController` supports
+`--uitesting-carplay-scenario=<name>`, which drives a scripted template sequence
+from inside the app on CarPlay connect and logs under `[CarPlayScenario]`. This
+needs only `simctl launch`, and makes race-dependent template bugs deterministic
+instead of something you must tap fast enough to hit:
+
+```bash
+xcrun simctl launch <udid> com.ambronet.smarttube --uitesting-carplay-scenario=double-alert
+```
+
+Scenarios: `double-alert` (regression guard for the present-over-presented crash),
+`queue-twice` (duplicate queue push). It still requires a **working CarPlay display**,
+since the hook runs on scene connect — it removes the need for input, not for a screen.
+
+### Driving the rotary knob (the real Mazda input)
+
+The Simulator's CarPlay window has a **knurled knob widget below the screen** — it
+is the rotary commander, and it is the only way to test the input method the car
+actually has. Enable it from *I/O → External Displays → CarPlay…*: the **TV Out
+Extended Setup** dialog has `Back Button`, `Home Button`, **`Knob`**, **`Knob
+nudge`**, **`Touch screen`** and `Touch screen is lo-fi` checkboxes (Width 800 /
+Height 480 / Scale 2). `Knob` is on by default.
+
+Calibrated on this host (knob centre ≈ 27 px radius in a full-screen computer-use
+screenshot):
+
+| Input | Mapping |
+|---|---|
+| **Rotate** = press-and-drag in an arc around the knob centre | **60° of arc = exactly one focus detent.** Clockwise (top→right→bottom) moves focus down |
+| **Press** = plain left-click on the knob centre | Selects the focused row / toggles play-pause |
+
+The rotate gesture must be a real arc — `left_mouse_down`, several `mouse_move`
+steps around the circumference, then `left_mouse_up`. Things that do **not** work:
+`scroll` over the knob (ignored), arrow keys with the CarPlay window focused
+(ignored), and `left_click_drag` (a straight chord is unreliable). Batch the whole
+arc into one `computer_batch` call.
+
+Focus rendering is the giveaway that this is genuine knob input: the focused row
+draws a bright rounded highlight, and the *first* rotation in a newly pushed
+template lands focus on row 1 rather than moving it. Verified end to end —
+root menu → Watch Later → row 2 → play → Now Playing — using knob input only.
+
+Unchecking **Touch screen** makes the display knob-only, matching the user's car
+(broken touchscreen). It is not needed to test focus reachability — the app cannot
+tell the difference, and iOS draws the focus ring either way — and changing it
+re-provisions the display, which risks a zombie screen. Prefer to leave it alone.
+
 ## Human path
 
 Open `SmartTube.xcworkspace` in Xcode and run the `SmartTube` scheme. Useful for

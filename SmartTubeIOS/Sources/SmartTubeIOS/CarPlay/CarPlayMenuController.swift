@@ -91,6 +91,60 @@ final class CarPlayMenuController: NSObject {
             if success, CarPlayBridge.shared.isPlaying {
                 self?.showNowPlaying()
             }
+            if success { self?.runTestScenarioIfRequested() }
+        }
+    }
+
+    // MARK: - Test hooks
+
+    /// Runs a scripted template scenario named by
+    /// `--uitesting-carplay-scenario=<name>`, and logs the outcome under
+    /// `[CarPlayScenario]`.
+    ///
+    /// This exists because the simulator's CarPlay display cannot be driven
+    /// programmatically: `simctl` has no input injection for an external
+    /// display, accessibility snapshots don't cover it, and synthetic clicks
+    /// need a macOS Automation grant that isn't always available. Driving the
+    /// template stack from inside the app makes these flows testable from a
+    /// plain `simctl launch`, and makes race-dependent bugs deterministic
+    /// rather than something you have to tap fast enough to hit.
+    private func runTestScenarioIfRequested() {
+        let prefix = "--uitesting-carplay-scenario="
+        guard let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }) else { return }
+        let scenario = String(arg.dropFirst(prefix.count))
+        log.notice("[CarPlayScenario] running '\(scenario, privacy: .public)'")
+
+        switch scenario {
+        case "double-alert":
+            // Regression guard for the crash in
+            // SmartTube-2026-08-07-195350.ips: presenting the "nothing playing"
+            // alert while one is already presented was rejected by CarPlay and,
+            // with a nil completion block, raised as an uncaught NSException.
+            // Two presents in quick succession reproduce it deterministically.
+            // Expected now: the first presents, the second is suppressed, and
+            // the app survives.
+            showNowPlaying()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                self?.showNowPlaying()
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                self?.showNowPlaying()
+                self?.log.notice("[CarPlayScenario] double-alert survived — no uncaught exception")
+            }
+
+        case "queue-twice":
+            // The queue template must not be pushed twice: a duplicate push is
+            // rejected and would crash the same way.
+            pushQueueList()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                self?.pushQueueList()
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                self?.log.notice("[CarPlayScenario] queue-twice survived — no uncaught exception")
+            }
+
+        default:
+            log.error("[CarPlayScenario] unknown scenario '\(scenario, privacy: .public)'")
         }
     }
 

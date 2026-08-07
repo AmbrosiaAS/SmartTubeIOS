@@ -15,6 +15,9 @@
 #   launch [--cold]   launch the app (CarPlay-safe flags); --cold terminates first
 #   terminate         stop the app
 #   shot [--phone] [PATH]     screenshot the CarPlay display (default) or phone
+#   appswitcher       open the phone app switcher (synthesised edge swipe)
+#   force-quit        app switcher, then flick the app's card away (a real
+#                     user-style force-quit, unlike `terminate`)
 #   click PX PY       click the CarPlay display at framebuffer pixel (PX,PY)
 #   carplay status    is the CarPlay display healthy?
 #   carplay recover   drop and re-provision a black/zombie CarPlay display
@@ -131,13 +134,50 @@ EOF
     sleep 0.3
 }
 
-clicker_bin() {
-    local bin="${TMPDIR:-/tmp}/simq-click"
-    if [ ! -x "$bin" ] || [ "$SKILL_DIR/click.swift" -nt "$bin" ]; then
-        swiftc -O "$SKILL_DIR/click.swift" -o "$bin" >/dev/null 2>&1 \
-            || die "could not build click.swift (needs Xcode command line tools)"
+clicker_bin() { helper_bin click; }
+dragger_bin() { helper_bin drag; }
+
+# Compiles a bundled Swift helper on first use and caches it, rebuilding when the
+# source changes.
+helper_bin() {
+    local name="$1"
+    local bin="${TMPDIR:-/tmp}/simq-$name"
+    if [ ! -x "$bin" ] || [ "$SKILL_DIR/$name.swift" -nt "$bin" ]; then
+        swiftc -O "$SKILL_DIR/$name.swift" -o "$bin" >/dev/null 2>&1 \
+            || die "could not build $name.swift (needs Xcode command line tools)"
     fi
     echo "$bin"
+}
+
+# --- phone screen (for gestures the CarPlay screen can't express) -----------
+
+# Geometry of the PHONE window's render view, in screen points, plus the device's
+# own pixel dimensions — needed to convert phone-screen coordinates for dragging.
+phone_group_origin() {
+    osascript <<'EOF' 2>/dev/null
+tell application "System Events" to tell process "Simulator"
+  set w to (first window whose name does not end with "– CarPlay")
+  set g to (first UI element of w whose role is "AXGroup")
+  set p to position of g
+  set s to size of g
+  return ((item 1 of p) as string) & " " & ((item 2 of p) as string) & " " & ((item 1 of s) as string) & " " & ((item 2 of s) as string)
+end tell
+EOF
+}
+
+focus_phone() {
+    local win
+    win="$(osascript -e 'tell application "System Events" to tell process "Simulator" to get name of every window' 2>/dev/null \
+        | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -vE '[-–] *CarPlay$' | head -1)"
+    [ -n "$win" ] || die "no phone Simulator window found"
+    osascript >/dev/null 2>&1 <<EOF
+tell application "Simulator" to activate
+delay 0.4
+tell application "System Events" to tell process "Simulator"
+  perform action "AXRaise" of (first window whose name is "$win")
+end tell
+EOF
+    sleep 0.3
 }
 
 # --- subcommands ------------------------------------------------------------
@@ -251,6 +291,44 @@ cmd_click() {
     "$(clicker_bin)" "$sx" "$sy"
 }
 
+# Opens the app switcher on the PHONE screen by synthesising the edge swipe:
+# up from the very bottom, decelerating, then holding still before lifting.
+# A fast flick goes Home instead — the hold is what opens the switcher.
+cmd_appswitcher() {
+    local origin; origin="$(phone_group_origin)"
+    [ -n "$origin" ] || die "could not read the phone window's AXGroup"
+    read -r gx gy gw gh <<< "$origin"
+    focus_phone
+    local x=$(echo "$gx + $gw / 2" | bc -l)
+    local y1=$(echo "$gy + $gh - 2" | bc -l)     # the home-indicator edge
+    local y2=$(echo "$gy + $gh * 0.45" | bc -l)  # ~55% up the screen
+    "$(dragger_bin)" "$x" "$y1" "$x" "$y2" 34 900
+}
+
+# Force-quits the app the way a user does: app switcher, then flick the card up.
+cmd_force_quit() {
+    cmd_appswitcher >/dev/null
+    sleep 1.5
+    local origin; origin="$(phone_group_origin)"
+    read -r gx gy gw gh <<< "$origin"
+    # The frontmost card sits centred; flick it off the top with no hold so it is
+    # read as a dismissal rather than a drag.
+    local x=$(echo "$gx + $gw / 2" | bc -l)
+    local y1=$(echo "$gy + $gh * 0.45" | bc -l)
+    local y2=$(echo "$gy + 20" | bc -l)
+    "$(dragger_bin)" "$x" "$y1" "$x" "$y2" 14 0
+    sleep 1
+    # Leave the switcher so the next launch starts from a normal state.
+    "$(dragger_bin)" "$x" "$y1" "$x" "$y1" 2 0 >/dev/null 2>&1 || true
+    osascript >/dev/null 2>&1 -e 'tell application "System Events" to tell process "Simulator" to click menu item "Home" of menu 1 of menu bar item "Device" of menu bar 1' || true
+    sleep 1
+    if xcrun simctl spawn "$(resolve_udid)" launchctl list 2>/dev/null | grep -qi smarttube; then
+        echo "WARNING: $BUNDLE_ID still appears to be running — the card flick may have missed"
+        return 1
+    fi
+    echo "force-quit $BUNDLE_ID via the app switcher"
+}
+
 cmd_carplay() {
     case "${1:-status}" in
         status)
@@ -341,6 +419,8 @@ case "$SUB" in
     shot)      cmd_shot "$@" ;;
     click)     cmd_click "$@" ;;
     carplay)   cmd_carplay "$@" ;;
+    appswitcher) cmd_appswitcher "$@" ;;
+    force-quit)  cmd_force_quit "$@" ;;
     logs)      cmd_logs "$@" ;;
     tests)     cmd_tests "$@" ;;
     *)         die "unknown subcommand '$SUB' — try: simq help" ;;

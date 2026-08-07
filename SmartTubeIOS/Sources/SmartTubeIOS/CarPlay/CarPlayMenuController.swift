@@ -37,6 +37,10 @@ final class CarPlayMenuController: NSObject {
     /// Tracks the car's limited-UI state; delegate fires when driving starts/stops.
     private var sessionConfiguration: CPSessionConfiguration?
 
+    /// True while the "nothing playing" alert is on screen. CarPlay permits only
+    /// one presented template at a time and rejects a second one.
+    private var isPresentingAlert = false
+
     /// Effective row cap for whatever the car currently allows.
     private var rowCap: Int {
         let limited = sessionConfiguration?.limitedUserInterfaces.contains(.lists) ?? false
@@ -136,7 +140,7 @@ final class CarPlayMenuController: NSObject {
         let template = CPListTemplate(title: source.title, sections: [])
         template.userInfo = source.rawValue
         template.emptyViewTitleVariants = ["Loading…"]
-        interfaceController.pushTemplate(template, animated: true, completion: nil)
+        push(template, label: source.title)
         Task { [weak self] in
             await self?.populate(template, source: source)
         }
@@ -292,7 +296,7 @@ final class CarPlayMenuController: NSObject {
         if let existing = interfaceController.templates.first(where: {
             ($0 as? CPListTemplate)?.userInfo as? String == Self.queueTemplateTag
         }) as? CPListTemplate {
-            interfaceController.pop(to: existing, animated: true, completion: nil)
+            pop(to: existing, label: "Queue")
             Task { [weak self] in await self?.populateQueue(existing) }
             return
         }
@@ -300,7 +304,7 @@ final class CarPlayMenuController: NSObject {
         template.userInfo = Self.queueTemplateTag
         template.emptyViewTitleVariants = ["Queue is empty"]
         template.emptyViewSubtitleVariants = ["Pick a video from History or Watch Later to start a queue."]
-        interfaceController.pushTemplate(template, animated: true, completion: nil)
+        push(template, label: "Queue")
         Task { [weak self] in
             await self?.populateQueue(template)
         }
@@ -361,19 +365,75 @@ final class CarPlayMenuController: NSObject {
                 ],
                 actions: [
                     CPAlertAction(title: "OK", style: .cancel) { [weak self] _ in
-                        self?.interfaceController.dismissTemplate(animated: true, completion: nil)
+                        guard let self else { return }
+                        self.isPresentingAlert = false
+                        self.interfaceController.dismissTemplate(animated: true) { [log = self.log] _, error in
+                            if let error { log.error("[CarPlay] dismissTemplate failed: \(error.localizedDescription)") }
+                        }
                     }
                 ]
             )
-            interfaceController.presentTemplate(alert, animated: true, completion: nil)
+            // CarPlay throws "Presenting a template while a template is already
+            // presented is not supported" if an alert is already up — and with a
+            // nil completion block it raises that error as an UNCAUGHT NSException
+            // instead of reporting it, crashing the app (confirmed in a crash
+            // report: NSGenericException from CPInterfaceController
+            // _handleCompletion:withSuccess:error:). Two guards: don't present a
+            // second alert, and always pass a completion so any future template
+            // error is delivered to us rather than thrown.
+            guard !isPresentingAlert else { return }
+            isPresentingAlert = true
+            interfaceController.presentTemplate(alert, animated: true) { [weak self, log] _, error in
+                if let error {
+                    self?.isPresentingAlert = false
+                    log.error("[CarPlay] presentTemplate failed: \(error.localizedDescription)")
+                }
+            }
             return
         }
         let nowPlaying = CPNowPlayingTemplate.shared
         guard interfaceController.topTemplate !== nowPlaying else { return }
+        // Same reasoning for the push/pop pair: a nil completion turns a rejected
+        // template operation into a crash. Pushing a template that is already on
+        // the stack is rejected, so the contains() check matters — but the
+        // completion block is the backstop for anything it doesn't anticipate
+        // (e.g. two pushes racing before the first completes).
         if interfaceController.templates.contains(where: { $0 === nowPlaying }) {
-            interfaceController.pop(to: nowPlaying, animated: true, completion: nil)
+            interfaceController.pop(to: nowPlaying, animated: true) { [log] _, error in
+                if let error { log.error("[CarPlay] pop to Now Playing failed: \(error.localizedDescription)") }
+            }
         } else {
-            interfaceController.pushTemplate(nowPlaying, animated: true, completion: nil)
+            interfaceController.pushTemplate(nowPlaying, animated: true) { [log] _, error in
+                if let error { log.error("[CarPlay] push Now Playing failed: \(error.localizedDescription)") }
+            }
+        }
+    }
+
+    // MARK: - Template stack
+
+    /// Pushes a template, reporting failures instead of dying on them.
+    ///
+    /// Never pass `completion: nil` to a CPInterfaceController operation. When
+    /// CarPlay rejects one — a duplicate template, the 5-deep stack limit, or
+    /// presenting over an already-presented template — and no completion block
+    /// was supplied, it raises the error as an **uncaught NSException** and the
+    /// app is killed with SIGABRT. A crash report confirmed exactly that. With a
+    /// block, the same condition is delivered to us as an `error` we can log.
+    private func push(_ template: CPTemplate, label: String) {
+        interfaceController.pushTemplate(template, animated: true) { [log] _, error in
+            if let error {
+                log.error("[CarPlay] push \(label, privacy: .public) failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Pops back to a template already on the stack. Same completion-block
+    /// reasoning as `push`.
+    private func pop(to template: CPTemplate, label: String) {
+        interfaceController.pop(to: template, animated: true) { [log] _, error in
+            if let error {
+                log.error("[CarPlay] pop to \(label, privacy: .public) failed: \(error.localizedDescription)")
+            }
         }
     }
 

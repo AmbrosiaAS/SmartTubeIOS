@@ -51,27 +51,59 @@ public final class CarPlayBridge {
     /// Now Playing screen has real content to show.
     var hasActiveVideo: Bool { playerState?.currentVideo != nil }
 
+    /// Index of the current video within the Current Queue, or nil when the
+    /// active video didn't come from the queue. The queue may contain the same
+    /// video ID twice, so position comes from the playlistIndex stamped by
+    /// CurrentQueueStore.videoAt(index:) rather than an ID search.
+    var currentQueueIndex: Int? {
+        guard let video = playerState?.currentVideo,
+              video.playlistId == CurrentQueueStore.playlistID else { return nil }
+        return video.playlistIndex
+    }
+
     // MARK: - Playback
 
-    /// Starts `videos[startIndex]` on the native AVPlayer pipeline and seeds
-    /// the Current Queue with the whole list so playback auto-advances to the
-    /// next video when one ends — no glances at the screen needed while driving.
+    /// Appends `video` to the Current Queue and starts playing it.
+    ///
+    /// Picking from History or Watch Later adds that one video rather than
+    /// replacing the queue with the whole list: the queue accumulates the
+    /// driver's picks, and because the video is played tagged with the queue's
+    /// playlistId, playback auto-advances through whatever else is queued
+    /// behind it (see PlaybackViewModel.handlePlaybackEnd).
     ///
     /// CarPlay always uses the AVPlayer pipeline rather than PlayerRouter's
     /// default TOS web player: only AVPlayer drives MPNowPlayingInfoCenter and
     /// keeps playing with the phone locked, both of which CarPlay requires.
     /// The two pipelines are mutually exclusive (see PlayerRouter), so any
     /// active TOS playback is stopped first.
-    func play(videos: [Video], startIndex: Int) {
-        guard let playerState, videos.indices.contains(startIndex) else { return }
+    func play(video: Video) {
+        guard let playerState else { return }
         if let tosState, tosState.presentation != .hidden {
             tosState.stop()
         }
         Task { @MainActor in
-            await CurrentQueueStore.shared.replaceAll(with: videos)
-            // videoAt(index:) tags the video with the queue playlistId, which is
-            // what PlaybackViewModel.handlePlaybackEnd keys auto-advance on.
-            let queued = await CurrentQueueStore.shared.videoAt(index: startIndex) ?? videos[startIndex]
+            // append() is a no-op when the video is already queued, so re-picking
+            // a row plays it from its existing position instead of duplicating it.
+            await CurrentQueueStore.shared.append(video)
+            // videoAt(index:) stamps the queue playlistId/playlistIndex, which is
+            // what auto-advance keys on — so play the stamped copy, not the raw row.
+            var queued: Video?
+            if let index = await CurrentQueueStore.shared.videos.firstIndex(where: { $0.id == video.id }) {
+                queued = await CurrentQueueStore.shared.videoAt(index: index)
+            }
+            playerState.play(video: queued ?? video)
+        }
+    }
+
+    /// Jumps playback to an existing queue entry without rebuilding the queue,
+    /// so the rest of the up-next order is preserved.
+    func playQueueItem(at index: Int) {
+        guard let playerState else { return }
+        if let tosState, tosState.presentation != .hidden {
+            tosState.stop()
+        }
+        Task { @MainActor in
+            guard let queued = await CurrentQueueStore.shared.videoAt(index: index) else { return }
             playerState.play(video: queued)
         }
     }

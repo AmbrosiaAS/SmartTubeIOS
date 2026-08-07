@@ -30,9 +30,18 @@ public actor CurrentQueueStore: UserDefaultsBackedStore {
 
     // MARK: - Init
 
+    /// The app's live queue always starts empty.
+    ///
+    /// The queue is deliberately session-scoped: restoring one from a previous
+    /// run means playback auto-advances into videos queued days ago, and on
+    /// CarPlay the Queue screen looks pre-filled before the driver has queued
+    /// anything. Persistence itself is kept (see `persist()` / `init(suiteName:)`)
+    /// so state survives within a run and stays unit-testable — it just isn't
+    /// read back at launch. Any value written by an earlier run is dropped here
+    /// rather than left to linger in UserDefaults.
     private init() {
         self.defaults = .standard
-        if let loaded = Self.loadFrom(.standard) { videos = loaded }
+        defaults.removeObject(forKey: Self.defaultsKey)
     }
 
     /// Designated initializer for unit tests.

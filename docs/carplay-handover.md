@@ -1,6 +1,8 @@
 # CarPlay feature — handover
 
-Branch `carplay-menu`, PR [#2](https://github.com/AmbrosiaAS/SmartTubeIOS/pull/2).
+Branch `carplay-menu`. PR [#2](https://github.com/AmbrosiaAS/SmartTubeIOS/pull/2)
+is **merged**; PR [#3](https://github.com/AmbrosiaAS/SmartTubeIOS/pull/3) is
+**open** with the later work.
 Written 2026-08-08. Read `CLAUDE.md` first (simulator lock is mandatory), then this.
 
 ---
@@ -27,24 +29,27 @@ conflict, CarPlay wins.
 
 ---
 
-## 2. Repo state — READ THIS BEFORE COMMITTING
+## 2. Repo state
 
-| Thing | State |
-|---|---|
-| `f844410` "Now Playing: report real player state instead of guessing" | **committed locally, NOT pushed** — PR #2 is still at `ea43292` |
-| `SmartTubeApp/Sources/AppEntry.swift` | **uncommitted** — adds the `--uitesting-play-watch-later-first` launch hook |
+**Everything is committed and pushed. Working tree is clean.** Nothing is
+waiting on you here.
 
-So: push `f844410` and decide about the AppEntry hook. The hook is test-only
-scaffolding but it is the only way to exercise the playback path on a physical
-device (see §6).
-
-Commits already in PR #2:
+**Merged into `master`** via PR #2 (master tip `2c8b545`):
 
 - `eec636f` CarPlay: queue screen, append-and-play, in-motion row cap
 - `24e72f1` Now Playing: fix frozen progress bar, show position immediately, add chapter name
 - `97f0a8f` Add simulator queue lock and run-ios-simulator skill
 - `630914a` CarPlay: fix crash from presenting an alert over an existing one
 - `ea43292` CarPlay: add scripted test scenarios, document rotary-knob automation
+
+**On `carplay-menu`, open in PR #3, not yet in master:**
+
+- `f844410` Now Playing: report real player state instead of guessing ← the §3 fix
+- `70b5983` Add launch-time hook to play the first Watch Later item
+- `762e5aa` docs: CarPlay handover (this file)
+
+Note PR #2 was merged *before* those three landed, which is why they needed a
+second PR — don't assume a single PR carries the whole feature.
 
 ---
 
@@ -262,9 +267,20 @@ These still need a **working CarPlay display** (the hook fires on scene
 connect); they remove the need for *input*, not for a screen. You must still
 click the app icon on the CarPlay home screen once to connect the scene.
 
-The **uncommitted** `--uitesting-play-watch-later-first` flag in `AppEntry.swift`
-is the launch-time equivalent for a **physical device**, where no head unit
-exists to trigger the CarPlay scene.
+`--uitesting-play-watch-later-first` in `AppEntry.swift` (commit `70b5983`) is the
+launch-time equivalent for a **physical device**, where no head unit exists to
+trigger the CarPlay scene. It plays the first Watch Later video through the same
+`PlayerStateStore` path the CarPlay row handler uses, so it exercises the real
+playback path without CarPlay:
+
+```bash
+xcrun devicectl device process launch --device <udid> --terminate-existing \
+  com.ambronet.smarttube \
+  --arg "--uitesting-disable-tos-player-on-ios" \
+  --arg "--uitesting-play-watch-later-first"
+```
+
+Remember the phone must be **unlocked** for launch to be permitted (§6).
 
 ---
 
@@ -371,7 +387,9 @@ Do not call the feature broken.
 
 ### High value
 
-1. **Push `f844410`** and decide on the uncommitted `AppEntry.swift` hook (§2).
+1. **Get PR [#3](https://github.com/AmbrosiaAS/SmartTubeIOS/pull/3) reviewed and
+   merged** — it carries the honest-bar fix (§3). Nothing is uncommitted; this is
+   just waiting on the user.
 2. **Loading feedback on the Now Playing screen** — the user explicitly asked for
    it: *"Some feedback to show the video is loading (search for other
    implementations) then showing the actual video when it's playing."*

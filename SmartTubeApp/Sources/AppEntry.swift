@@ -55,8 +55,9 @@ struct AppEntry: App {
             return BotGuardClient()
         }()
         let api = InnerTubeAPI(authToken: nil, poTokenProvider: poTokenProvider)
+        let authService = AuthService()
         _api             = State(initialValue: api)
-        _authService     = State(initialValue: AuthService())
+        _authService     = State(initialValue: authService)
         _browseViewModel = State(initialValue: BrowseViewModel(api: api))
         _settingsStore   = State(initialValue: settingsStore)
         #if os(iOS)
@@ -69,6 +70,14 @@ struct AppEntry: App {
             tosState: tosPlayerStateStore,
             settingsStore: settingsStore
         ))
+        // The CarPlay scene is created by UIKit outside the SwiftUI environment,
+        // so it pulls these services from CarPlayBridge instead of DI.
+        CarPlayBridge.shared.configure(
+            api: api,
+            authService: authService,
+            playerState: playerStateStore,
+            tosState: tosPlayerStateStore
+        )
         #endif
         _cardDownloadService = State(initialValue: VideoDownloadService(api: api))
 

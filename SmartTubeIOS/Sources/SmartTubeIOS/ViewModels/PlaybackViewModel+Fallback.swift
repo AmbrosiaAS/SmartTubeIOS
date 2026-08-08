@@ -889,6 +889,20 @@ extension PlaybackViewModel {
     private func attemptURL(_ url: URL, for video: Video, info: PlayerInfo, label: String) async -> Bool {
         playerLog.notice("[\(label)]: \(url.absoluteString.prefix(120))")
 
+        // Same supersede guard as loadAsync's "BUG-005 fix": a retry still in
+        // flight for a video the user has already navigated away from must not
+        // touch ViewModel state. Without this it overwrites `playerInfo`, and
+        // since Now Playing reads its metadata from `playerInfo?.video`, the
+        // CarPlay/lock-screen title silently flips to the abandoned video while
+        // the current one keeps playing (elapsed time carries on, so it reads as
+        // corrupt metadata rather than a track change). It would also hand the
+        // AVPlayer a stale item, so abandon the whole attempt, not just the
+        // assignment.
+        guard currentVideo?.id == video.id else {
+            playerLog.notice("[\(label)] superseded: abandoning attempt for \(video.id)")
+            return false
+        }
+
         playerInfo = info
         let newFormats = Self.deduplicatedVideoFormats(info.formats)
         // Never reduce quality options for adaptive/HLS streams — preserve the richest set seen.
@@ -1204,6 +1218,13 @@ extension PlaybackViewModel {
         }
 
         playerLog.notice("[\(label)/adaptive] videoItag=\(videoItag) client=\(clientParam) audioItag=\(audioItag)")
+
+        // Supersede guard — see attemptURL for why (stale retries corrupting
+        // Now Playing metadata and handing the player a dead item).
+        guard currentVideo?.id == video.id else {
+            playerLog.notice("[\(label)/adaptive] superseded: abandoning attempt for \(video.id)")
+            return false
+        }
 
         playerInfo = info
         let newFormats = Self.deduplicatedVideoFormats(info.formats)

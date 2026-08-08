@@ -1,0 +1,427 @@
+#!/bin/bash
+#
+# simq — queued, machine-gated driver for the iOS Simulator on Xcode-VM.
+#
+# Every subcommand that touches the simulator takes an exclusive FIFO lock
+# (scripts/simlock) so concurrent sessions cannot corrupt each other's runs.
+# Refuses to do anything on a machine other than Xcode-VM.
+#
+# Subcommands (see `simq help`):
+#   doctor            environment + machine gate + lock status
+#   status            lock holder/queue, booted devices, app install state
+#   run -- CMD…       run any command holding the lock
+#   build             build the iOS app scheme
+#   install           install the built .app onto the device
+#   launch [--cold]   launch the app (CarPlay-safe flags); --cold terminates first
+#   terminate         stop the app
+#   shot [--phone] [PATH]     screenshot the CarPlay display (default) or phone
+#   appswitcher       open the phone app switcher (synthesised edge swipe)
+#   force-quit        app switcher, then flick the app's card away (a real
+#                     user-style force-quit, unlike `terminate`)
+#   click PX PY       click the CarPlay display at framebuffer pixel (PX,PY)
+#   carplay status    is the CarPlay display healthy?
+#   carplay recover   drop and re-provision a black/zombie CarPlay display
+#   logs [PATTERN]    recent app log lines (default: the app's own subsystem)
+#   tests [ARGS…]     run the SwiftPM test suite on this device
+
+set -uo pipefail
+
+# --- configuration ----------------------------------------------------------
+
+# This skill is deliberately pinned to one machine. Identity fingerprint:
+#   ComputerName Xcode-VM, hw.model VirtualMac2,1,
+#   IOPlatformUUID 4B085935-4672-5C7F-8FEC-2B57429C94C2
+readonly REQUIRED_MACHINE="${SIMQ_MACHINE:-Xcode-VM}"
+
+readonly SKILL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly UNIT_DIR="$(cd -- "$SKILL_DIR/../../.." && pwd)"
+readonly SIMLOCK="$UNIT_DIR/scripts/simlock"
+readonly WORKSPACE="$UNIT_DIR/SmartTube.xcworkspace"
+readonly APP_SCHEME="SmartTube"
+readonly BUNDLE_ID="com.ambronet.smarttube"
+readonly SHOT_DIR="${SIMQ_SHOT_DIR:-$UNIT_DIR/.simq-shots}"
+
+# Playback launch flag: forces the AVPlayer pipeline instead of the WKWebView
+# TOS player. CarPlay needs AVPlayer — only it drives MPNowPlayingInfoCenter and
+# survives a locked phone. Without this, CarPlay tests silently exercise the
+# wrong pipeline and prove nothing.
+readonly LAUNCH_ARGS="--uitesting-disable-tos-player-on-ios"
+
+die() { echo "simq: $*" >&2; exit 1; }
+
+# --- machine gate -----------------------------------------------------------
+
+machine_name() { scutil --get ComputerName 2>/dev/null || hostname -s; }
+
+require_machine() {
+    local actual; actual="$(machine_name)"
+    if [ "$actual" != "$REQUIRED_MACHINE" ]; then
+        cat >&2 <<EOF
+simq: refusing to run — this skill manages simulator sessions on '$REQUIRED_MACHINE' only.
+      This machine reports: '$actual'
+
+      The lock, the device names, and the CarPlay display recovery steps here are
+      specific to that host. Running them elsewhere would fight another machine's
+      simulators, not queue with them.
+
+      If you genuinely renamed the host, re-run with SIMQ_MACHINE='$actual'.
+EOF
+        exit 3
+    fi
+}
+
+# --- device resolution ------------------------------------------------------
+
+# Prefer an explicit UDID, else the booted device. Never picks by name: names get
+# renamed (this project's device is "SmartTubeIOS - carplay-menu - 1") and a
+# stale name silently targets the wrong simulator.
+resolve_udid() {
+    if [ -n "${SIMQ_UDID:-}" ]; then echo "$SIMQ_UDID"; return 0; fi
+    local booted
+    booted="$(xcrun simctl list devices booted 2>/dev/null \
+        | sed -n 's/.*(\([0-9A-F-]\{36\}\)) (Booted).*/\1/p' | head -1)"
+    [ -n "$booted" ] || die "no booted simulator (and SIMQ_UDID not set) — boot one first: xcrun simctl boot <udid>"
+    echo "$booted"
+}
+
+# --- lock -------------------------------------------------------------------
+
+# Everything simulator-touching funnels through here.
+locked() {
+    [ -x "$SIMLOCK" ] || die "missing $SIMLOCK — the queue primitive this skill depends on"
+    "$SIMLOCK" run --label "${SIMQ_LABEL:-simq $SUB}" -- "$@"
+}
+
+# --- CarPlay window helpers -------------------------------------------------
+
+# Window titles END with "– CarPlay". Anchor on the suffix: this project's DEVICE
+# is named "…carplay-menu…", so a loose `grep -i carplay` also matches the phone
+# window and you silently drive the wrong screen.
+carplay_window() {
+    osascript -e 'tell application "System Events" to tell process "Simulator" to get name of every window' 2>/dev/null \
+        | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -E '[-–] *CarPlay$' | head -1
+}
+
+# The clickable area is an AXGroup INSIDE the window, not the window frame, and
+# its origin MOVES between sessions (observed at {87,120} and {607,148}). Always
+# read it live.
+carplay_group_origin() {
+    osascript <<'EOF' 2>/dev/null
+tell application "System Events" to tell process "Simulator"
+  set w to (first window whose name ends with "– CarPlay")
+  set g to (first UI element of w whose role is "AXGroup")
+  set p to position of g
+  set s to size of g
+  return ((item 1 of p) as string) & " " & ((item 2 of p) as string) & " " & ((item 1 of s) as string) & " " & ((item 2 of s) as string)
+end tell
+EOF
+}
+
+# Activating the Simulator APPLICATION is mandatory before clicking. AXRaise on
+# the CarPlay window alone is not enough — the Claude desktop app window overlaps
+# those screen coordinates and swallows CGEvent clicks, which reads as "clicks
+# don't work". This cost two earlier sessions their first taps.
+focus_carplay() {
+    local win; win="$(carplay_window)"
+    [ -n "$win" ] || die "no CarPlay window found — try: simq carplay recover"
+    osascript >/dev/null 2>&1 <<EOF
+tell application "Simulator" to activate
+delay 0.4
+tell application "System Events" to tell process "Simulator"
+  perform action "AXRaise" of (first window whose name is "$win")
+end tell
+EOF
+    sleep 0.3
+}
+
+clicker_bin() { helper_bin click; }
+dragger_bin() { helper_bin drag; }
+
+# Compiles a bundled Swift helper on first use and caches it, rebuilding when the
+# source changes.
+helper_bin() {
+    local name="$1"
+    local bin="${TMPDIR:-/tmp}/simq-$name"
+    if [ ! -x "$bin" ] || [ "$SKILL_DIR/$name.swift" -nt "$bin" ]; then
+        swiftc -O "$SKILL_DIR/$name.swift" -o "$bin" >/dev/null 2>&1 \
+            || die "could not build $name.swift (needs Xcode command line tools)"
+    fi
+    echo "$bin"
+}
+
+# --- phone screen (for gestures the CarPlay screen can't express) -----------
+
+# Geometry of the PHONE window's render view, in screen points, plus the device's
+# own pixel dimensions — needed to convert phone-screen coordinates for dragging.
+phone_group_origin() {
+    osascript <<'EOF' 2>/dev/null
+tell application "System Events" to tell process "Simulator"
+  set w to (first window whose name does not end with "– CarPlay")
+  set g to (first UI element of w whose role is "AXGroup")
+  set p to position of g
+  set s to size of g
+  return ((item 1 of p) as string) & " " & ((item 2 of p) as string) & " " & ((item 1 of s) as string) & " " & ((item 2 of s) as string)
+end tell
+EOF
+}
+
+focus_phone() {
+    local win
+    win="$(osascript -e 'tell application "System Events" to tell process "Simulator" to get name of every window' 2>/dev/null \
+        | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -vE '[-–] *CarPlay$' | head -1)"
+    [ -n "$win" ] || die "no phone Simulator window found"
+    osascript >/dev/null 2>&1 <<EOF
+tell application "Simulator" to activate
+delay 0.4
+tell application "System Events" to tell process "Simulator"
+  perform action "AXRaise" of (first window whose name is "$win")
+end tell
+EOF
+    sleep 0.3
+}
+
+# --- subcommands ------------------------------------------------------------
+
+cmd_doctor() {
+    echo "machine:    $(machine_name)  (required: $REQUIRED_MACHINE)"
+    echo "hw.model:   $(sysctl -n hw.model 2>/dev/null)"
+    echo "xcode:      $(xcodebuild -version 2>/dev/null | head -1)  at $(xcode-select -p 2>/dev/null)"
+    echo "simlock:    $([ -x "$SIMLOCK" ] && echo present || echo 'MISSING')"
+    echo "load:       $(uptime | sed 's/.*load averages*: //')"
+    local plist="$UNIT_DIR/SmartTubeApp/SmartTubeApp/GoogleService-Info.plist"
+    echo "firebase:   $([ -f "$plist" ] && echo 'present' || echo 'MISSING — copy from "SmartTubeApp/Smart Tube/GoogleService-Info.plist" or the build fails')"
+    echo "booted:     $(xcrun simctl list devices booted 2>/dev/null | grep -c Booted) device(s)"
+    xcrun simctl list devices booted 2>/dev/null | grep Booted | sed 's/^/            /'
+    echo "carplay:    $(carplay_window || echo 'no CarPlay window')"
+    echo
+    "$SIMLOCK" status 2>/dev/null | sed 's/^/lock: /'
+}
+
+cmd_status() {
+    "$SIMLOCK" status | sed 's/^/lock: /'
+    echo
+    xcrun simctl list devices booted
+    local udid; udid="$(resolve_udid)" || return 1
+    echo
+    if xcrun simctl get_app_container "$udid" "$BUNDLE_ID" >/dev/null 2>&1; then
+        echo "app: $BUNDLE_ID installed on $udid"
+    else
+        echo "app: $BUNDLE_ID NOT installed on $udid"
+    fi
+}
+
+cmd_build() {
+    locked xcodebuild build \
+        -workspace "$WORKSPACE" -scheme "$APP_SCHEME" \
+        -destination "platform=iOS Simulator,id=$(resolve_udid)" \
+        -quiet "$@"
+}
+
+app_path() {
+    xcodebuild -workspace "$WORKSPACE" -scheme "$APP_SCHEME" \
+        -destination "platform=iOS Simulator,id=$(resolve_udid)" \
+        -showBuildSettings 2>/dev/null \
+        | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{d=$2} / FULL_PRODUCT_NAME /{n=$2} END{print d"/"n}'
+}
+
+cmd_install() {
+    local udid app; udid="$(resolve_udid)"; app="$(app_path)"
+    [ -d "$app" ] || die "no built app at '$app' — run: simq build"
+    # `install` over the top, NEVER `simctl erase`: erase wipes the signed-in
+    # YouTube session and re-authenticating needs the user's credentials.
+    locked xcrun simctl install "$udid" "$app"
+    echo "installed $app"
+}
+
+cmd_launch() {
+    local udid cold=0; udid="$(resolve_udid)"
+    [ "${1:-}" = "--cold" ] && cold=1
+    if [ "$cold" -eq 1 ]; then
+        locked xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
+        sleep 1
+    fi
+    locked xcrun simctl launch "$udid" "$BUNDLE_ID" $LAUNCH_ARGS
+}
+
+cmd_terminate() {
+    # Terminating an app that isn't running is success, not failure — simctl
+    # exits 3 with "found nothing to terminate", which would otherwise abort a
+    # caller's `set -e` script for no reason.
+    local out
+    if out="$(locked xcrun simctl terminate "$(resolve_udid)" "$BUNDLE_ID" 2>&1)"; then
+        echo "terminated $BUNDLE_ID"
+    elif grep -q "found nothing to terminate" <<< "$out"; then
+        echo "$BUNDLE_ID was not running"
+    else
+        echo "$out" >&2
+        die "terminate failed"
+    fi
+}
+
+cmd_shot() {
+    local udid display=external; udid="$(resolve_udid)"
+    if [ "${1:-}" = "--phone" ]; then display=internal; shift; fi
+    mkdir -p "$SHOT_DIR"
+    local out="${1:-$SHOT_DIR/$display-$(date +%H%M%S).png}"
+    # `--display external` is the CarPlay screen. The NUMERIC forms (--display 2
+    # or 3) hang forever; screencapture needs a TCC Screen Recording grant and
+    # Simulator's File > Save Screen silently writes nothing when the display is
+    # mis-provisioned. This is the only reliable path.
+    local err
+    if ! err="$(locked xcrun simctl io "$udid" screenshot --display "$display" "$out" 2>&1)"; then
+        echo "$err" >&2
+        die "screenshot failed (display=$display) — for the CarPlay screen try: simq carplay status"
+    fi
+    echo "$out"
+}
+
+cmd_click() {
+    [ $# -ge 2 ] || die "usage: simq click <framebuffer-px> <framebuffer-py>"
+    local px="$1" py="$2"
+    local origin; origin="$(carplay_group_origin)"
+    [ -n "$origin" ] || die "could not read the CarPlay AXGroup — is the CarPlay window open? try: simq carplay recover"
+    read -r gx gy gw gh <<< "$origin"
+    # The group is exactly half the 800x480 framebuffer (400x240), so the screen
+    # point is origin + pixel/2.
+    local sx sy
+    sx=$(echo "$gx + $px / 2" | bc -l)
+    sy=$(echo "$gy + $py / 2" | bc -l)
+    echo "AXGroup {$gx,$gy} ${gw}x${gh}; framebuffer ($px,$py) -> screen ($sx,$sy)"
+    focus_carplay
+    "$(clicker_bin)" "$sx" "$sy"
+}
+
+# Opens the app switcher on the PHONE screen by synthesising the edge swipe:
+# up from the very bottom, decelerating, then holding still before lifting.
+# A fast flick goes Home instead — the hold is what opens the switcher.
+cmd_appswitcher() {
+    local origin; origin="$(phone_group_origin)"
+    [ -n "$origin" ] || die "could not read the phone window's AXGroup"
+    read -r gx gy gw gh <<< "$origin"
+    focus_phone
+    local x=$(echo "$gx + $gw / 2" | bc -l)
+    local y1=$(echo "$gy + $gh - 2" | bc -l)     # the home-indicator edge
+    local y2=$(echo "$gy + $gh * 0.45" | bc -l)  # ~55% up the screen
+    "$(dragger_bin)" "$x" "$y1" "$x" "$y2" 34 900
+}
+
+# Force-quits the app the way a user does: app switcher, then flick the card up.
+cmd_force_quit() {
+    cmd_appswitcher >/dev/null
+    sleep 1.5
+    local origin; origin="$(phone_group_origin)"
+    read -r gx gy gw gh <<< "$origin"
+    # The frontmost card sits centred; flick it off the top with no hold so it is
+    # read as a dismissal rather than a drag.
+    local x=$(echo "$gx + $gw / 2" | bc -l)
+    local y1=$(echo "$gy + $gh * 0.45" | bc -l)
+    local y2=$(echo "$gy + 20" | bc -l)
+    "$(dragger_bin)" "$x" "$y1" "$x" "$y2" 14 0
+    sleep 1
+    # Leave the switcher so the next launch starts from a normal state.
+    "$(dragger_bin)" "$x" "$y1" "$x" "$y1" 2 0 >/dev/null 2>&1 || true
+    osascript >/dev/null 2>&1 -e 'tell application "System Events" to tell process "Simulator" to click menu item "Home" of menu 1 of menu bar item "Device" of menu bar 1' || true
+    sleep 1
+    if xcrun simctl spawn "$(resolve_udid)" launchctl list 2>/dev/null | grep -qi smarttube; then
+        echo "WARNING: $BUNDLE_ID still appears to be running — the card flick may have missed"
+        return 1
+    fi
+    echo "force-quit $BUNDLE_ID via the app switcher"
+}
+
+cmd_carplay() {
+    case "${1:-status}" in
+        status)
+            local udid; udid="$(resolve_udid)"
+            echo "window: $(carplay_window || echo none)"
+            echo "AXGroup: $(carplay_group_origin || echo unavailable)"
+            # A healthy external screen has a class-1 port with a live IOSurface
+            # of 800x480. A zombie one has no IOSurface and carkitd logs
+            # pixelSize {0,0} in a tight loop while pegging a core.
+            if xcrun simctl io "$udid" enumerate 2>/dev/null \
+                 | awk '/Display class: 1/,/^$/' | grep -q "width  *= *800"; then
+                echo "framebuffer: HEALTHY (800x480 IOSurface present)"
+            else
+                echo "framebuffer: UNHEALTHY — no 800x480 surface; run: simq carplay recover"
+            fi
+            ;;
+        recover)
+            # Rebooting the simulator does NOT fix a zombie CarPlay screen (the
+            # dead window re-attaches in the same state) and neither does
+            # reinstalling the app. The display must be dropped and re-added.
+            echo "dropping external display…"
+            osascript >/dev/null 2>&1 <<'EOF'
+tell application "Simulator" to activate
+delay 0.5
+tell application "System Events" to tell process "Simulator"
+  click menu item "Disabled" of menu 1 of menu item "External Displays" of menu 1 of menu bar item "I/O" of menu bar 1
+end tell
+EOF
+            sleep 5
+            echo "re-provisioning CarPlay…"
+            osascript >/dev/null 2>&1 <<'EOF'
+tell application "System Events" to tell process "Simulator"
+  click menu item "CarPlay…" of menu 1 of menu item "External Displays" of menu 1 of menu bar item "I/O" of menu bar 1
+end tell
+EOF
+            sleep 4
+            osascript >/dev/null 2>&1 -e 'tell application "System Events" to tell process "Simulator" to click button "Run" of window "TV Out Extended Setup"'
+            sleep 12
+            cmd_carplay status
+            ;;
+        *) die "usage: simq carplay [status|recover]" ;;
+    esac
+}
+
+cmd_logs() {
+    local udid pattern; udid="$(resolve_udid)"
+    pattern="${1:-}"
+    # The app logs under BOTH subsystems and you need both: CarPlay/PlayerState
+    # under com.void.smarttube.app, but RemoteCmd/Player/InnerTube/BotGuard under
+    # com.ambronet.smarttube. Filtering on only the first makes remote-command
+    # diagnostics look absent when they are simply in the other subsystem — a
+    # false negative that already cost one session its Q2 evidence.
+    local subsystems='(subsystem == "com.void.smarttube.app" OR subsystem == "com.ambronet.smarttube")'
+    local predicate="$subsystems"
+    [ -n "$pattern" ] && predicate="$subsystems AND eventMessage CONTAINS \"$pattern\""
+    # NOTE: no `tail` here. Truncating before the caller greps hides older matches
+    # inside the window — pipe to your own tail/grep instead.
+    xcrun simctl spawn "$udid" log show --last "${SIMQ_LOG_WINDOW:-5m}" \
+        --predicate "$predicate" --style compact 2>/dev/null
+}
+
+cmd_tests() {
+    # Target by id, never by name — the device gets renamed.
+    locked env -C "$UNIT_DIR/SmartTubeIOS" xcodebuild test \
+        -scheme SmartTubeIOS-Package \
+        -destination "platform=iOS Simulator,id=$(resolve_udid)" "$@"
+}
+
+cmd_help() { sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'; }
+
+# --- dispatch ---------------------------------------------------------------
+
+SUB="${1:-help}"; shift || true
+case "$SUB" in
+    help|-h|--help) cmd_help; exit 0 ;;
+esac
+
+require_machine
+
+case "$SUB" in
+    doctor)    cmd_doctor "$@" ;;
+    status)    cmd_status "$@" ;;
+    run)       [ "${1:-}" = "--" ] && shift; [ $# -ge 1 ] || die "usage: simq run -- <command>"; locked "$@" ;;
+    build)     cmd_build "$@" ;;
+    install)   cmd_install "$@" ;;
+    launch)    cmd_launch "$@" ;;
+    terminate) cmd_terminate "$@" ;;
+    shot)      cmd_shot "$@" ;;
+    click)     cmd_click "$@" ;;
+    carplay)   cmd_carplay "$@" ;;
+    appswitcher) cmd_appswitcher "$@" ;;
+    force-quit)  cmd_force_quit "$@" ;;
+    logs)      cmd_logs "$@" ;;
+    tests)     cmd_tests "$@" ;;
+    *)         die "unknown subcommand '$SUB' — try: simq help" ;;
+esac

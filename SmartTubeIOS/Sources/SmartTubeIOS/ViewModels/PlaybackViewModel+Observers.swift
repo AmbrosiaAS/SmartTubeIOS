@@ -32,6 +32,11 @@ extension PlaybackViewModel {
                 self.checkSponsorSkip(at: seconds)
                 self.updateCaptionCue(for: seconds)
                 if self.statsForNerdsVisible { self.updateStatsSnapshot() }
+                #if canImport(UIKit)
+                // Placed after the guards above so a periodic Now Playing publish
+                // can never fight an in-progress scrub or SponsorBlock auto-seek.
+                self.refreshNowPlayingElapsedTimeIfNeeded()
+                #endif
             }
         }
     }
@@ -125,6 +130,27 @@ extension PlaybackViewModel {
                             }
                         }
                     }
+                } else {
+                    #if canImport(UIKit)
+                    // Rate changed without a stall — most importantly 0 → non-zero
+                    // when playback actually begins (readyToPlay → play). Nothing
+                    // else publishes that transition to MPNowPlayingInfoCenter, so
+                    // the lock screen / CarPlay Now Playing kept the load-time
+                    // snapshot (rate 0, elapsed ≈ load position): the system drew a
+                    // Play glyph and, with rate 0, never extrapolated the progress
+                    // bar — it sat frozen while audio was audibly playing. Also
+                    // covers playback-speed changes applied directly to player.rate.
+                    // Publish only when the reported rate would actually change:
+                    // our own play/pause/toggle handlers already call
+                    // updateNowPlayingPlayback() themselves, and their KVO echoes
+                    // land here with a matching cached rate — skipping them avoids
+                    // a redundant nowPlayingInfo write per user action.
+                    let cachedRate = (self.nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] as? NSNumber)?.doubleValue
+                    let reportedRate = self.isPlaying ? Double(newRate) : 0.0
+                    if cachedRate != reportedRate {
+                        self.updateNowPlayingPlayback()
+                    }
+                    #endif
                 }
             }
         }

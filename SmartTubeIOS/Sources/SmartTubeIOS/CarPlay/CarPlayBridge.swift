@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import os
 import SmartTubeIOSCore
 
 // MARK: - CarPlayBridge
@@ -15,6 +16,11 @@ import SmartTubeIOSCore
 public final class CarPlayBridge {
 
     public static let shared = CarPlayBridge()
+
+    /// Every exit path in `play(video:)` used to be silent, so a head-unit pick
+    /// that never started playback left no trace at all in the log — the CarPlay
+    /// screen just sat there. Log each step.
+    private let log = Logger(subsystem: "com.void.smarttube.app", category: "CarPlay")
 
     private(set) var api: InnerTubeAPI?
     private(set) var authService: AuthService?
@@ -77,7 +83,11 @@ public final class CarPlayBridge {
     /// The two pipelines are mutually exclusive (see PlayerRouter), so any
     /// active TOS playback is stopped first.
     func play(video: Video) {
-        guard let playerState else { return }
+        log.notice("[bridge] play requested id=\(video.id, privacy: .public) playerState=\(self.playerState == nil ? "nil" : "set", privacy: .public)")
+        guard let playerState else {
+            log.error("[bridge] play ABORTED — playerState is nil (configure() never ran)")
+            return
+        }
         if let tosState, tosState.presentation != .hidden {
             tosState.stop()
         }
@@ -91,6 +101,7 @@ public final class CarPlayBridge {
             if let index = await CurrentQueueStore.shared.videos.firstIndex(where: { $0.id == video.id }) {
                 queued = await CurrentQueueStore.shared.videoAt(index: index)
             }
+            log.notice("[bridge] queue resolved id=\(video.id, privacy: .public) stamped=\(queued != nil, privacy: .public) — calling playerState.play")
             playerState.play(video: queued ?? video)
         }
     }

@@ -255,6 +255,13 @@ public final class PlaybackViewModel {
     @ObservationIgnored nonisolated(unsafe) var timeObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var audioSessionObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var rateObserver: NSKeyValueObservation?
+    /// Observes `timeControlStatus`, which is what actually tells us whether audio
+    /// is rolling. `rate` is NOT enough: calling play() sets rate to 1 immediately
+    /// while the status sits at `.waitingToPlayAtSpecifiedRate`, and the later flip
+    /// to `.playing` changes no rate at all — so a rate-only observer never hears
+    /// the moment playback truly begins, and the Now Playing bar would stay stuck
+    /// reporting "paused" over audible audio.
+    @ObservationIgnored nonisolated(unsafe) var timeControlObserver: NSKeyValueObservation?
     /// True while the video is being routed to an external display via AirPlay.
     public internal(set) var isAirPlaying: Bool = false
     @ObservationIgnored nonisolated(unsafe) var airPlayObserver: NSKeyValueObservation?
@@ -488,6 +495,7 @@ public final class PlaybackViewModel {
         setupRemoteCommandCenter()
         setupAudioSessionObserver()
         setupAirPlayObserver()
+        setupTimeControlObserver()
         #endif
 
         // Wire delegates (self is now fully initialised).
@@ -506,6 +514,7 @@ public final class PlaybackViewModel {
     deinit {
         if let obs = timeObserver { player.removeTimeObserver(obs) }
         rateObserver?.invalidate()
+        timeControlObserver?.invalidate()
         airPlayObserver?.invalidate()
         if let obs = audioSessionObserver { NotificationCenter.default.removeObserver(obs) }
         #if canImport(UIKit)

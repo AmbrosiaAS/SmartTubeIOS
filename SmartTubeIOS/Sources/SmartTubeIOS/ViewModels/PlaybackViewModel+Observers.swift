@@ -146,8 +146,7 @@ extension PlaybackViewModel {
                     // land here with a matching cached rate — skipping them avoids
                     // a redundant nowPlayingInfo write per user action.
                     let cachedRate = (self.nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] as? NSNumber)?.doubleValue
-                    let reportedRate = self.isPlaying ? Double(newRate) : 0.0
-                    if cachedRate != reportedRate {
+                    if cachedRate != self.publishablePlaybackRate {
                         self.updateNowPlayingPlayback()
                     }
                     #endif
@@ -157,6 +156,24 @@ extension PlaybackViewModel {
     }
 
     #if canImport(UIKit)
+    /// Republishes Now Playing whenever the player's real playback status changes.
+    ///
+    /// This is what keeps the head unit's progress bar honest. The bar is drawn by
+    /// the system as `elapsed + rate × wall-clock` from the last values we
+    /// published, so those values must change at exactly the moments audio starts
+    /// and stops. `timeControlStatus` is the only property that reports those
+    /// moments: play() sets `rate` to 1 up front and the status lingers at
+    /// `.waitingToPlayAtSpecifiedRate` until the stream is actually rolling, with
+    /// no further rate change when it finally does.
+    func setupTimeControlObserver() {
+        timeControlObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self, !self.nowPlayingInfoCache.isEmpty else { return }
+                self.updateNowPlayingPlayback()
+            }
+        }
+    }
+
     func setupAirPlayObserver() {
         airPlayObserver = player.observe(\.isExternalPlaybackActive, options: [.new]) { [weak self] _, change in
             guard let self, let active = change.newValue else { return }

@@ -114,6 +114,38 @@ struct AppEntry: App {
         }
     }
 
+    /// When launched with `--uitesting-play-watch-later-first`, plays the first
+    /// Watch Later video through the same `PlayerStateStore` path the CarPlay row
+    /// handler uses.
+    ///
+    /// This exists so the playback half of the CarPlay complaint can be tested on a
+    /// **physical device**. The CarPlay scenario hook fires on CarPlay scene
+    /// connect, which never happens on a phone with no head unit attached — but the
+    /// failure it reproduces (stream resolves, then playback never starts) is not
+    /// CarPlay-specific, so it needs to be checked on real hardware where device
+    /// attestation actually succeeds and the stream-selection path differs from the
+    /// simulator's.
+    private func playFirstWatchLaterIfRequested() {
+        #if os(iOS)
+        guard ProcessInfo.processInfo.arguments.contains("--uitesting-play-watch-later-first") else { return }
+        Task { @MainActor in
+            let log = Logger(subsystem: "com.void.smarttube.app", category: "CarPlay")
+            log.notice("[DeviceScenario] play-watch-later-first starting")
+            do {
+                let group = try await api.fetchPlaylistVideos(playlistId: "WL")
+                guard let first = group.videos.first else {
+                    log.error("[DeviceScenario] Watch Later is empty")
+                    return
+                }
+                log.notice("[DeviceScenario] picking id=\(first.id, privacy: .public) title=\(first.title, privacy: .public)")
+                playerStateStore.play(video: first)
+            } catch {
+                log.error("[DeviceScenario] Watch Later fetch failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        #endif
+    }
+
     /// When launched with `--uitesting-sign-out`, clears the in-memory auth session
     /// so UI tests can verify signed-out UI on a simulator with a real account stored
     /// in the keychain. Keychain credentials are preserved and will be used again on
@@ -286,6 +318,7 @@ struct AppEntry: App {
                     .onAppear {
                         enableShortsIfNeeded()
                         signOutIfNeeded()
+                        playFirstWatchLaterIfRequested()
                     }
                     #if os(iOS)
                     .alert(item: $watchLaterAlert) { item in

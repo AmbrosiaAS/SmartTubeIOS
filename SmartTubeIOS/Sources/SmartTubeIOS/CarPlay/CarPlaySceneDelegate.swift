@@ -27,6 +27,7 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
         _ templateApplicationScene: CPTemplateApplicationScene,
         didDisconnectInterfaceController interfaceController: CPInterfaceController
     ) {
+        menu?.disconnect()
         menu = nil
     }
 }

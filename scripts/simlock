@@ -1,0 +1,205 @@
+#!/bin/bash
+#
+# simlock — serialise access to the iOS Simulator across concurrent sessions.
+#
+# This machine has room for exactly one busy simulator (6 cores / 14 GB, and
+# carkitd burns a core on its own whenever a CarPlay display is provisioned).
+# Two sessions using it at once corrupts results rather than just being slow:
+# `xcodebuild test` installs and launches a test runner, which terminates the
+# app another session is driving, and a second booted device starves both.
+#
+# Usage:
+#   simlock run [--label TEXT] [--timeout SECS] -- <command> [args...]
+#       Wait for the lock, run the command, release the lock (even on failure,
+#       interrupt, or kill). This is the form you almost always want.
+#
+#   simlock acquire [--label TEXT] [--timeout SECS]
+#       Take the lock and return. Caller MUST run `simlock release` afterwards;
+#       prefer `run` unless the work spans several separate shell invocations.
+#
+#   simlock release [--force]
+#       Release a lock this process owns; --force breaks someone else's.
+#
+#   simlock status
+#       Print the current holder and the waiting queue. Always exits 0.
+#
+# Fairness: waiters queue FIFO by arrival, so a long line can't starve anyone.
+# Liveness: a holder whose PID has died is detected and its lock broken, so a
+# crashed or killed session cannot wedge the machine.
+#
+# Exit codes: 0 ok, 1 usage/other error, 2 timed out waiting for the lock.
+
+set -uo pipefail
+
+readonly LOCK_ROOT="${SIMLOCK_ROOT:-/tmp/smarttube-simlock}"
+readonly LOCK_DIR="$LOCK_ROOT/lock"          # atomic mkdir = the mutex itself
+readonly HOLDER_FILE="$LOCK_DIR/holder"
+readonly QUEUE_DIR="$LOCK_ROOT/queue"
+readonly DEFAULT_TIMEOUT=3600
+readonly POLL_INTERVAL=2
+
+usage() { sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+
+now_epoch() { date +%s; }
+
+# --- holder bookkeeping ------------------------------------------------------
+
+holder_pid() { [ -f "$HOLDER_FILE" ] && sed -n '1p' "$HOLDER_FILE" || echo ""; }
+holder_label() { [ -f "$HOLDER_FILE" ] && sed -n '2p' "$HOLDER_FILE" || echo ""; }
+holder_since() { [ -f "$HOLDER_FILE" ] && sed -n '3p' "$HOLDER_FILE" || echo ""; }
+holder_cmd() { [ -f "$HOLDER_FILE" ] && sed -n '4p' "$HOLDER_FILE" || echo ""; }
+
+# Break the lock if its owner is gone. Without this a killed session (or a
+# subagent that died mid-run) would hold the simulator until someone noticed.
+reap_stale_lock() {
+    [ -d "$LOCK_DIR" ] || return 0
+    local pid; pid="$(holder_pid)"
+    if [ -z "$pid" ]; then
+        # Lock dir with no holder file: a torn acquire. Treat as stale, but only
+        # once it is old enough that we cannot be racing the writer.
+        local age_ok
+        age_ok="$(find "$LOCK_DIR" -maxdepth 0 -mmin +1 2>/dev/null)"
+        [ -n "$age_ok" ] && rm -rf "$LOCK_DIR"
+        return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "simlock: breaking stale lock from dead pid $pid ($(holder_label))" >&2
+        rm -rf "$LOCK_DIR"
+    fi
+}
+
+write_holder() {
+    { echo "$$"; echo "$LABEL"; now_epoch; echo "$*"; } > "$HOLDER_FILE"
+}
+
+# --- queue (FIFO fairness) ---------------------------------------------------
+
+# Our ticket sorts by arrival time, so `head -1` of the sorted queue is next up.
+ticket_path() { echo "$QUEUE_DIR/$TICKET_STAMP-$$"; }
+
+enter_queue() {
+    mkdir -p "$QUEUE_DIR"
+    TICKET_STAMP="$(now_epoch)"
+    printf '%s\n' "$LABEL" > "$(ticket_path)"
+}
+
+leave_queue() { rm -f "$(ticket_path)" 2>/dev/null || true; }
+
+# True when no earlier ticket is still waiting. Tickets from dead processes are
+# swept so one abandoned waiter cannot block the whole line.
+our_turn() {
+    local first
+    for t in $(ls -1 "$QUEUE_DIR" 2>/dev/null | sort); do
+        local tpid="${t##*-}"
+        if ! kill -0 "$tpid" 2>/dev/null; then
+            rm -f "$QUEUE_DIR/$t" 2>/dev/null || true
+            continue
+        fi
+        first="$t"
+        break
+    done
+    [ -z "$first" ] || [ "$first" = "$TICKET_STAMP-$$" ]
+}
+
+# --- commands ---------------------------------------------------------------
+
+do_acquire() {
+    mkdir -p "$LOCK_ROOT"
+    enter_queue
+    local deadline=$(( $(now_epoch) + TIMEOUT ))
+    local announced=0
+    while :; do
+        reap_stale_lock
+        if our_turn && mkdir "$LOCK_DIR" 2>/dev/null; then
+            write_holder "$@"
+            leave_queue
+            return 0
+        fi
+        if [ "$(now_epoch)" -ge "$deadline" ]; then
+            leave_queue
+            echo "simlock: timed out after ${TIMEOUT}s waiting for the simulator" >&2
+            echo "simlock: held by pid $(holder_pid) ($(holder_label))" >&2
+            return 2
+        fi
+        if [ "$announced" -eq 0 ]; then
+            echo "simlock: waiting for simulator — held by pid $(holder_pid) ($(holder_label))" >&2
+            announced=1
+        fi
+        sleep "$POLL_INTERVAL"
+    done
+}
+
+do_release() {
+    if [ ! -d "$LOCK_DIR" ]; then
+        echo "simlock: not locked" >&2
+        return 0
+    fi
+    local pid; pid="$(holder_pid)"
+    if [ "$FORCE" -eq 0 ] && [ -n "$pid" ] && [ "$pid" != "$$" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "simlock: refusing to release a live lock held by pid $pid ($(holder_label)); use --force" >&2
+        return 1
+    fi
+    rm -rf "$LOCK_DIR"
+}
+
+do_status() {
+    if [ -d "$LOCK_DIR" ]; then
+        local since; since="$(holder_since)"
+        local held=""
+        [ -n "$since" ] && held=" for $(( $(now_epoch) - since ))s"
+        echo "HELD by pid $(holder_pid) ($(holder_label))$held"
+        [ -n "$(holder_cmd)" ] && echo "  command: $(holder_cmd)"
+        local pid; pid="$(holder_pid)"
+        if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+            echo "  (pid is DEAD — the next acquire will break this lock)"
+        fi
+    else
+        echo "FREE"
+    fi
+    local waiting
+    waiting="$(ls -1 "$QUEUE_DIR" 2>/dev/null | sort)"
+    if [ -n "$waiting" ]; then
+        echo "waiting:"
+        while read -r t; do
+            [ -n "$t" ] || continue
+            echo "  ${t##*-}  $(cat "$QUEUE_DIR/$t" 2>/dev/null)"
+        done <<< "$waiting"
+    fi
+    return 0
+}
+
+# --- argument parsing -------------------------------------------------------
+
+[ $# -ge 1 ] || usage
+SUBCOMMAND="$1"; shift
+
+LABEL="${SIMLOCK_LABEL:-$(whoami)@$(hostname -s):$$}"
+TIMEOUT="$DEFAULT_TIMEOUT"
+FORCE=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --label)   LABEL="${2:-}"; shift 2 ;;
+        --timeout) TIMEOUT="${2:-}"; shift 2 ;;
+        --force)   FORCE=1; shift ;;
+        --)        shift; break ;;
+        -h|--help) usage ;;
+        *)         break ;;
+    esac
+done
+
+case "$SUBCOMMAND" in
+    status)  do_status ;;
+    release) do_release ;;
+    acquire) do_acquire "${*:-(none)}" ;;
+    run)
+        [ $# -ge 1 ] || { echo "simlock: run needs a command after --" >&2; exit 1; }
+        do_acquire "$*" || exit $?
+        # Release on ANY exit path — normal, non-zero, ^C, or SIGTERM — so a
+        # failed build can never leave the simulator locked.
+        trap 'do_release >/dev/null 2>&1' EXIT INT TERM
+        "$@"
+        exit $?
+        ;;
+    *) usage ;;
+esac

@@ -211,11 +211,12 @@ extension PlaybackViewModel {
             MPNowPlayingInfoPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.video.rawValue),
             MPNowPlayingInfoPropertyIsLiveStream: NSNumber(value: video.isLive),
             MPNowPlayingInfoPropertyElapsedPlaybackTime: NSNumber(value: currentTime),
-            MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: isPlaying ? Double(player.rate) : 0.0),
+            MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: publishablePlaybackRate),
         ]
-        if duration > 0 {
-            info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: duration)
+        if let known = publishableDuration(for: video) {
+            info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: known)
         }
+        applyChapterMetadata(to: &info)
         nowPlayingInfoCache = info
 
         // Artwork — capture the current image by value so the MPMediaItemArtwork closure
@@ -260,8 +261,98 @@ extension PlaybackViewModel {
 
     func updateNowPlayingPlayback() {
         nowPlayingInfoCache[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: currentTime)
-        nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? Double(player.rate) : 0.0)
+        nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: publishablePlaybackRate)
+        // Keep the duration current: it starts as the catalogue value and is
+        // replaced by AVPlayer's exact one once the item is ready (see
+        // publishableDuration).
+        let video = playerInfo?.video ?? currentVideo
+        if let known = publishableDuration(for: video),
+           (nowPlayingInfoCache[MPMediaItemPropertyPlaybackDuration] as? NSNumber)?.doubleValue != known {
+            nowPlayingInfoCache[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: known)
+        }
+        // The current chapter changes as time advances, so it has to be refreshed
+        // here (every 3 s via refreshNowPlayingElapsedTimeIfNeeded) rather than only
+        // when the video's metadata changes.
+        applyChapterMetadata(to: &nowPlayingInfoCache)
         setNowPlayingInfo(nowPlayingInfoCache)
+    }
+
+    /// Publishes the current chapter as Now Playing metadata.
+    ///
+    /// CarPlay cannot draw chapter notches on its progress bar — CPNowPlayingTemplate
+    /// exposes no progress-bar API at all — so metadata is the only way to tell the
+    /// driver which section is playing. The CarPlay Now Playing template renders
+    /// three text lines (verified in the simulator): title, artist, and a smaller
+    /// dimmed album line that appears only when the key is set. The chapter name goes
+    /// on the album line so it reads as a subtitle and the artist line stays the
+    /// channel name.
+    ///
+    /// `ChapterNumber`/`ChapterCount` are also published in case the system surfaces
+    /// them (e.g. a "3 of 26" indicator); CarPlay was not observed to render anything
+    /// from them, but they are correct information and cost nothing.
+    private func applyChapterMetadata(to info: inout [String: Any]) {
+        guard !chapters.isEmpty else {
+            info.removeValue(forKey: MPMediaItemPropertyAlbumTitle)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterCount)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterNumber)
+            return
+        }
+        info[MPNowPlayingInfoPropertyChapterCount] = NSNumber(value: chapters.count)
+        guard let current = currentChapter,
+              let index = chapters.firstIndex(where: { $0.id == current.id }) else {
+            // Chaptered video, but playback is before the first chapter starts —
+            // drop any stale name rather than leaving the previous one on screen.
+            info.removeValue(forKey: MPMediaItemPropertyAlbumTitle)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterNumber)
+            return
+        }
+        info[MPNowPlayingInfoPropertyChapterNumber] = NSNumber(value: index)
+        info[MPMediaItemPropertyAlbumTitle] = current.title
+    }
+
+    /// Duration to advertise to Now Playing, or nil when none can honestly be
+    /// claimed.
+    ///
+    /// Prefers AVPlayer's own duration, but falls back to the catalogue duration
+    /// carried on the `Video` (the same value the CarPlay list row displays).
+    /// That fallback is what makes the progress bar appear immediately: stream
+    /// resolution can take ~90 s on a cold start, and without any duration key
+    /// the system renders NO bar and NO position at all — the screen just shows a
+    /// title and transport glyphs, which reads as "the position display is
+    /// broken". The catalogue value is accurate to the second for normal videos
+    /// and is overwritten by AVPlayer's once the item is ready.
+    ///
+    /// Live streams get nil: they advertise MPNowPlayingInfoPropertyIsLiveStream
+    /// and must never be given a finite bar.
+    private func publishableDuration(for video: Video?) -> TimeInterval? {
+        if duration > 0 { return duration }
+        guard let video, !video.isLive, let catalogue = video.duration, catalogue > 0 else { return nil }
+        return catalogue
+    }
+
+    /// Interval between periodic elapsed-time publishes to MPNowPlayingInfoCenter.
+    /// The system extrapolates the progress bar from the last (elapsed, rate) pair,
+    /// so ticking the info center every 0.5 s (the time-observer cadence) would be
+    /// pure overhead — each nowPlayingInfo write is a comparatively expensive XPC
+    /// round-trip to mediaremoted. 3 s keeps the bar honest within one glance after
+    /// anything that invalidates the extrapolation (seeks, speed changes) while
+    /// writing at 1/6 the tick rate.
+    static let nowPlayingElapsedRefreshInterval: TimeInterval = 3
+
+    /// Throttled elapsed-time refresh, called from the 0.5 s periodic time observer
+    /// (after its isScrubbing / isSkippingSegment / isQualityChangePending guards,
+    /// so a publish can never fight a scrub). Without a periodic correction the
+    /// info center only hears from us on discrete events, and any stale
+    /// (elapsed, rate) pair — e.g. from a publish that raced a seek — persists
+    /// until the next user action.
+    func refreshNowPlayingElapsedTimeIfNeeded(now: Date = Date()) {
+        // Nothing published (pre-load, or after clearNowPlayingInfo() on stop):
+        // publishing would resurrect a ghost Now Playing entry containing only
+        // elapsed/rate. Wait for the next full updateNowPlayingInfo().
+        guard !nowPlayingInfoCache.isEmpty else { return }
+        guard now.timeIntervalSince(lastNowPlayingElapsedRefresh) >= Self.nowPlayingElapsedRefreshInterval else { return }
+        lastNowPlayingElapsedRefresh = now
+        updateNowPlayingPlayback()
     }
 
     func clearNowPlayingInfo() {
@@ -278,7 +369,47 @@ extension PlaybackViewModel {
     /// Since every caller is already @MainActor-isolated this call is always
     /// synchronous on the main thread.
     private func setNowPlayingInfo(_ info: [String: Any]?) {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        // playbackState is a SEPARATE property from the info dictionary, and the
+        // info dictionary alone is not enough: without this, CarPlay's Now Playing
+        // template shows the ▶ (paused) glyph and refuses to extrapolate the
+        // progress bar from (elapsed, rate), so the bar latches on the first value
+        // it ever saw and only jumps when a seek forces a refresh. Traced in the
+        // CarPlay simulator: the app wrote elapsed 246→308 with rate 1.0 every 3 s
+        // while the screen sat frozen at 3:36 for a minute.
+        //
+        // It must come from the PLAYER, not from `isPlaying`. `isPlaying` is an
+        // intent flag set the moment playback is requested, so deriving the state
+        // from it claimed ".playing" while the stream was still resolving — and
+        // because the system extrapolates the bar from (elapsed, rate), the bar
+        // then advanced smoothly for audio that was never running. That is the
+        // "bar moves but there is no sound" report: a bar that guesses instead of
+        // reporting. `actualPlaybackState` only says .playing when AVPlayer is
+        // actually rolling.
+        center.playbackState = info == nil ? .stopped : actualPlaybackState
+    }
+
+    /// What the player is *actually* doing, for MPNowPlayingInfoCenter.
+    ///
+    /// MediaPlayer has no "buffering" state, so a stall or a not-yet-resolved
+    /// stream reports `.paused`: the bar holds still and the head unit shows the
+    /// ▶ glyph, which is the truth — nothing is playing yet.
+    private var actualPlaybackState: MPNowPlayingPlaybackState {
+        switch player.timeControlStatus {
+        case .playing:                      return .playing
+        case .paused:                       return .paused
+        case .waitingToPlayAtSpecifiedRate: return .paused
+        @unknown default:                   return .paused
+        }
+    }
+
+    /// The rate to publish. Paired with `actualPlaybackState`: the system
+    /// extrapolates position as `elapsed + rate × wall-clock`, so publishing a
+    /// non-zero rate while the player is stalled is what makes the bar drift away
+    /// from reality. Zero unless audio is genuinely rolling.
+    var publishablePlaybackRate: Double {
+        player.timeControlStatus == .playing ? Double(player.rate) : 0
     }
 }
 #endif

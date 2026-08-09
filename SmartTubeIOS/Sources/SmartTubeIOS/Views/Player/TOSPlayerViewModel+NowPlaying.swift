@@ -165,7 +165,12 @@ extension TOSPlayerViewModel {
     /// Do NOT dispatch async here — see PlaybackViewModel+NowPlaying.swift's
     /// identical doc comment for why that causes an EXC_BREAKPOINT.
     private func setNowPlayingInfo(_ info: [String: Any]?) {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        // Same reason as PlaybackViewModel+NowPlaying's identical line: without an
+        // explicit playbackState the lock screen shows a paused glyph and a frozen
+        // progress bar regardless of the rate in the info dictionary.
+        center.playbackState = info == nil ? .stopped : (playerState == .playing ? .playing : .paused)
     }
 }
 #endif

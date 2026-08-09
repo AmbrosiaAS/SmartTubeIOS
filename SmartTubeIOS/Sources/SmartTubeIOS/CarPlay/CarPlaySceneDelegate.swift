@@ -36,6 +36,7 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
         MainActor.assumeIsolated {
             CarPlayBridge.shared.carPlaySceneDidDisconnect()
         }
+        menu?.disconnect()
         menu = nil
     }
 }

@@ -369,6 +369,20 @@ extension PlaybackViewModel {
         // completed on slow networks (GitHub issue #53).
         playerLog.notice("[loadAsync] start id=\(video.id) title=\(video.title) player.rate=\(self.player.rate) timeControlStatus=\(self.player.timeControlStatus.rawValue)")
 
+        // Run-state signal — stamped as a breadcrumb so Firebase slow-load events show
+        // whether the WebView-throttling condition (CarPlay driving and/or the app not
+        // foreground-active) applied. `carPlayActive` also selects the background-safe
+        // muxed-first path below.
+        #if os(iOS)
+        let carPlayActive = CarPlayBridge.shared.isConnected
+        let appStateRaw = UIApplication.shared.applicationState
+        let appStateName = appStateRaw == .active ? "active" : (appStateRaw == .inactive ? "inactive" : "background")
+        #else
+        let carPlayActive = false
+        let appStateName = "n/a"
+        #endif
+        playerLog.notice("[loadAsync] run-state carplay=\(carPlayActive) appState=\(appStateName) id=\(video.id)")
+
         #if canImport(UIKit)
         // Seed the lock-screen Now Playing widget BEFORE the ~10 s network phase so
         // the user sees the title/channel on the lock screen immediately.
@@ -391,9 +405,11 @@ extension PlaybackViewModel {
         // WKWebView fallback on every cold start.
         // BotGuardClient completes in <500 ms on first run; cached result returns in <1 ms
         // thereafter (TTL ~12 h). The 2 s timeout is a safety net for slow networks only.
+        // Skipped under CarPlay: the muxed-first path below never consults hasPoToken,
+        // and minting a token off-screen just spins up the throttled WebView for nothing.
         let capturedAPI = api
         let capturedVideoId = video.id
-        if !(await api.hasPoToken(for: video.id)) {
+        if !carPlayActive, !(await api.hasPoToken(for: video.id)) {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await capturedAPI.prefetchPoToken(for: capturedVideoId) }
                 group.addTask { try? await Task.sleep(nanoseconds: 2_000_000_000) }
@@ -406,7 +422,9 @@ extension PlaybackViewModel {
         // Takes 3–8 s; by the time the primary attempt fails and exhaustiveRetry runs,
         // it may be ready to provide a full getMinter-minted token (CDN-accepted for rqh=1).
         // Zero impact on primary path timing — runs concurrently.
-        if !BotGuardWebViewRunner.shared.isReady {
+        // Skipped under CarPlay: the muxed-first path needs no minted token, and iOS
+        // throttles this WebView's JS while the app is backgrounded anyway.
+        if !carPlayActive, !BotGuardWebViewRunner.shared.isReady {
             let capturedVideoIdForWV = video.id
             Task { @MainActor in
                 await BotGuardWebViewRunner.shared.prepare(for: capturedVideoIdForWV)
@@ -427,7 +445,9 @@ extension PlaybackViewModel {
         // Reuse an in-flight pre-warm started by stop() for the same video (fix10).
         // If stop() already started serialExtract for this videoId, wkHLSEarlyTask is
         // non-nil and for the same video — just let it run; racePathB awaits its value.
-        if wkHLSEarlyTask == nil {
+        // Skipped under CarPlay: the muxed-first path never awaits wkHLSEarlyTask, and
+        // this off-screen extraction is exactly what stalls (~40 s) when backgrounded.
+        if !carPlayActive, wkHLSEarlyTask == nil {
             wkHLSEarlyTaskVideoId = capturedVideoIdForHLS
             wkHLSEarlyTask = Task { @MainActor in
                 // priorityExtract bypasses pendingSerialTask chaining → wv.load() starts
@@ -556,6 +576,20 @@ extension PlaybackViewModel {
             // File missing or path invalid — fall through to network re-stream.
             playerLog.notice("[loadAsync] localFileURL set but file not accessible, falling through: \(localURL.path)")
         }
+
+        #if os(iOS)
+        // CarPlay background-safe fast path (see carPlayMuxedFirstLoad). Bypasses the
+        // WebView HLS/PoToken pipeline — the source of the ~85 s CarPlay-cold stall —
+        // in favour of the Android progressive muxed stream: reliable while
+        // backgrounded, frame-accurate seeking, decent AAC audio. On any miss it falls
+        // through to the standard exhaustiveRetry chain so reliability never regresses.
+        if carPlayActive {
+            if await carPlayMuxedFirstLoad(video: video) { return }
+            playerLog.notice("[CarPlay] muxed-first path did not play — running standard exhaustiveRetry")
+            await exhaustiveRetry(video: video, originalError: nil, playerInfo: nil, cached: nil)
+            return
+        }
+        #endif
 
         do {
             // --- Cache-first load ---

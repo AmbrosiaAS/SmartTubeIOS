@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import os
 import SmartTubeIOSCore
 
 // MARK: - CarPlayBridge
@@ -16,12 +17,39 @@ public final class CarPlayBridge {
 
     public static let shared = CarPlayBridge()
 
+    private let log = Logger(subsystem: "com.void.smarttube.app", category: "CarPlay")
+
     private(set) var api: InnerTubeAPI?
     private(set) var authService: AuthService?
     private var playerState: PlayerStateStore?
     private var tosState: TOSPlayerStateStore?
 
+    /// True while a CarPlay head unit is connected (between the scene delegate's
+    /// didConnect and didDisconnect callbacks). Read by the playback pipeline to
+    /// select the background-safe muxed-first path: with the phone app closed or
+    /// backgrounded, iOS throttles WKWebView JavaScript, so the HLS/PoToken
+    /// WebView extraction stalls (two 40 s timeouts ≈ the ~85 s CarPlay-cold
+    /// startup). When connected, playback skips WebView entirely and plays the
+    /// Android progressive muxed stream — reliable, seekable, decent AAC audio.
+    private(set) var isConnected = false
+
     private init() {}
+
+    // MARK: - Scene lifecycle
+
+    /// Called by CarPlaySceneDelegate when the head unit connects.
+    func carPlaySceneDidConnect() {
+        isConnected = true
+        let state = "connected"
+        log.notice("[bridge] CarPlay scene \(state, privacy: .public) — muxed-first playback enabled")
+    }
+
+    /// Called by CarPlaySceneDelegate when the head unit disconnects.
+    func carPlaySceneDidDisconnect() {
+        isConnected = false
+        let state = "disconnected"
+        log.notice("[bridge] CarPlay scene \(state, privacy: .public) — standard playback restored")
+    }
 
     /// Registers the app's shared services. Safe to call repeatedly: only the
     /// first call wins, so a re-created `App` struct whose @State initial

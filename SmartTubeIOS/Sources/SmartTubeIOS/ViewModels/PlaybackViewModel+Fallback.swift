@@ -453,6 +453,63 @@ extension PlaybackViewModel {
         isLoading = false
     }
 
+    // MARK: - CarPlay background-safe fast path
+
+    #if os(iOS)
+    /// Background-safe muxed-first load used when a CarPlay head unit is driving.
+    ///
+    /// The standard path leans on a WKWebView (BotGuard PoToken minting + HLS
+    /// extraction). With the phone app closed/backgrounded — the normal CarPlay
+    /// state — iOS throttles WKWebView JavaScript, so the extractor stalls and
+    /// burns two 40 s timeouts before the client chain finally reaches the Android
+    /// muxed fallback. That is the ~85 s CarPlay-cold startup the driver sees.
+    ///
+    /// A CarPlay driver only hears audio, so we skip HLS/WebView entirely and play
+    /// the Android progressive muxed stream (itag 18: H.264 360p + AAC ~96 kbps).
+    /// It is a single file fetched over pure URLSession (no `pot=` token, no
+    /// WebView), plays reliably in the background, and — being a plain MP4 — seeks
+    /// frame-accurately for fast-forward / rewind. Turns ~85 s into ~2–3 s.
+    ///
+    /// Returns `true` once the muxed stream reaches `readyToPlay`; `false` to let
+    /// the caller fall through to the standard `exhaustiveRetry` chain (which still
+    /// works, just slower) so reliability never regresses below the old behaviour.
+    func carPlayMuxedFirstLoad(video: Video) async -> Bool {
+        playerLog.notice("[CarPlay] muxed-first load — id=\(video.id) (skipping HLS/WebView pipeline)")
+        let info: PlayerInfo
+        do {
+            // Android client: unauthenticated, network-only, reliably returns a
+            // real progressive muxed URL (unlike TVHTML5's SABR placeholder).
+            info = try await api.fetchPlayerInfoAndroid(videoId: video.id)
+        } catch {
+            playerLog.error("[CarPlay] Android playerInfo fetch failed: \(error.localizedDescription) — falling back to exhaustiveRetry")
+            return false
+        }
+        // Discard if the driver picked a different video while this fetch was in flight.
+        guard currentVideo?.id == video.id else {
+            playerLog.notice("[CarPlay] superseded during fetch — discarding \(video.id)")
+            return true
+        }
+        guard let muxedURL = info.bestMuxedDownloadURL else {
+            playerLog.notice("[CarPlay] Android response has no muxed stream — falling back to exhaustiveRetry")
+            return false
+        }
+        // c=TVHTML5 muxed URLs are SABR placeholders, not playable MP4s. The Android
+        // client (c=ANDROID) returns a real file, but guard defensively.
+        if muxedURL.absoluteString.contains("c=TVHTML5") {
+            playerLog.notice("[CarPlay] muxed URL is SABR (c=TVHTML5) — falling back to exhaustiveRetry")
+            return false
+        }
+        // The "/muxed" label makes attemptURL reset availableFormats to the muxed-only
+        // set and call launchPhase2 (next-video / metadata) on readyToPlay.
+        if await attemptURL(muxedURL, for: video, info: info, label: "CarPlay/muxed") {
+            playerLog.notice("[CarPlay] ✅ muxed stream playing — background-safe path done")
+            return true
+        }
+        playerLog.notice("[CarPlay] muxed attempt failed — falling back to exhaustiveRetry")
+        return false
+    }
+    #endif
+
     // MARK: - Race helpers (called from withTaskGroup in exhaustiveRetry)
 
     /// Path A of the exhaustiveRetry race: BotGuardWV adaptive / proxy HLS path.

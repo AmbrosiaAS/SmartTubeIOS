@@ -18,6 +18,12 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
         _ templateApplicationScene: CPTemplateApplicationScene,
         didConnect interfaceController: CPInterfaceController
     ) {
+        // Scene delegate callbacks are delivered on the main thread; assumeIsolated
+        // lets us touch the @MainActor CarPlayBridge without an async hop so the
+        // flag is set before any head-unit pick can start playback.
+        MainActor.assumeIsolated {
+            CarPlayBridge.shared.carPlaySceneDidConnect()
+        }
         let menu = CarPlayMenuController(interfaceController: interfaceController)
         self.menu = menu
         menu.installRootTemplate()
@@ -27,6 +33,9 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
         _ templateApplicationScene: CPTemplateApplicationScene,
         didDisconnectInterfaceController interfaceController: CPInterfaceController
     ) {
+        MainActor.assumeIsolated {
+            CarPlayBridge.shared.carPlaySceneDidDisconnect()
+        }
         menu?.disconnect()
         menu = nil
     }

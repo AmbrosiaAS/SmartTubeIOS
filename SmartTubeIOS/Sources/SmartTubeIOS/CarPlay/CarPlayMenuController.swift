@@ -143,6 +143,32 @@ final class CarPlayMenuController: NSObject {
                 self?.log.notice("[CarPlayScenario] queue-twice survived — no uncaught exception")
             }
 
+        case "play-watch-later-first":
+            // Reproduces the real complaint: phone locked, app selected on the
+            // head unit, first Watch Later row picked — playback never starts.
+            // Runs the same code path as the row handler in makeVideoItem, so it
+            // needs no pointer input and works with the screen locked.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await CarPlayBridge.shared.refreshAuthIfNeeded()
+                guard let api = CarPlayBridge.shared.api else {
+                    log.error("[CarPlayScenario] no api — bridge never configured")
+                    return
+                }
+                do {
+                    let group = try await api.fetchPlaylistVideos(playlistId: "WL")
+                    guard let first = group.videos.first else {
+                        log.error("[CarPlayScenario] Watch Later is empty")
+                        return
+                    }
+                    log.notice("[CarPlayScenario] picking id=\(first.id, privacy: .public) title=\(first.title, privacy: .public)")
+                    CarPlayBridge.shared.play(video: first)
+                    self.showNowPlaying(assumePlayback: true)
+                } catch {
+                    log.error("[CarPlayScenario] Watch Later fetch failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+
         default:
             log.error("[CarPlayScenario] unknown scenario '\(scenario, privacy: .public)'")
         }
@@ -264,6 +290,7 @@ final class CarPlayMenuController: NSObject {
         // own indicator, which doesn't render reliably on this head unit.
         item.isPlaying = video.id == CarPlayBridge.shared.currentVideoId
         item.handler = { [weak self] selected, completion in
+            self?.log.notice("[CarPlay] row selected id=\(video.id, privacy: .public)")
             // Adds this video to the queue and plays it (see CarPlayBridge).
             CarPlayBridge.shared.play(video: video)
             self?.markSelectedPlaying(selected, listVideos: videos)

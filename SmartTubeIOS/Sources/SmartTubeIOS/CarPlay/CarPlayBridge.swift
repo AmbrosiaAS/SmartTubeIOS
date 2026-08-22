@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import os
 import SmartTubeIOSCore
 
 // MARK: - CarPlayBridge
@@ -16,12 +17,42 @@ public final class CarPlayBridge {
 
     public static let shared = CarPlayBridge()
 
+    /// Every exit path in `play(video:)` used to be silent, so a head-unit pick
+    /// that never started playback left no trace at all in the log — the CarPlay
+    /// screen just sat there. Log each step.
+    private let log = Logger(subsystem: "com.void.smarttube.app", category: "CarPlay")
+
     private(set) var api: InnerTubeAPI?
     private(set) var authService: AuthService?
     private var playerState: PlayerStateStore?
     private var tosState: TOSPlayerStateStore?
 
+    /// True while a CarPlay head unit is connected (between the scene delegate's
+    /// didConnect and didDisconnect callbacks). Read by the playback pipeline to
+    /// select the background-safe muxed-first path: with the phone app closed or
+    /// backgrounded, iOS throttles WKWebView JavaScript, so the HLS/PoToken
+    /// WebView extraction stalls (two 40 s timeouts ≈ the ~85 s CarPlay-cold
+    /// startup). When connected, playback skips WebView entirely and plays the
+    /// Android progressive muxed stream — reliable, seekable, decent AAC audio.
+    private(set) var isConnected = false
+
     private init() {}
+
+    // MARK: - Scene lifecycle
+
+    /// Called by CarPlaySceneDelegate when the head unit connects.
+    func carPlaySceneDidConnect() {
+        isConnected = true
+        let state = "connected"
+        log.notice("[bridge] CarPlay scene \(state, privacy: .public) — muxed-first playback enabled")
+    }
+
+    /// Called by CarPlaySceneDelegate when the head unit disconnects.
+    func carPlaySceneDidDisconnect() {
+        isConnected = false
+        let state = "disconnected"
+        log.notice("[bridge] CarPlay scene \(state, privacy: .public) — standard playback restored")
+    }
 
     /// Registers the app's shared services. Safe to call repeatedly: only the
     /// first call wins, so a re-created `App` struct whose @State initial
@@ -77,7 +108,11 @@ public final class CarPlayBridge {
     /// The two pipelines are mutually exclusive (see PlayerRouter), so any
     /// active TOS playback is stopped first.
     func play(video: Video) {
-        guard let playerState else { return }
+        log.notice("[bridge] play requested id=\(video.id, privacy: .public) playerState=\(self.playerState == nil ? "nil" : "set", privacy: .public)")
+        guard let playerState else {
+            log.error("[bridge] play ABORTED — playerState is nil (configure() never ran)")
+            return
+        }
         if let tosState, tosState.presentation != .hidden {
             tosState.stop()
         }
@@ -91,6 +126,7 @@ public final class CarPlayBridge {
             if let index = await CurrentQueueStore.shared.videos.firstIndex(where: { $0.id == video.id }) {
                 queued = await CurrentQueueStore.shared.videoAt(index: index)
             }
+            log.notice("[bridge] queue resolved id=\(video.id, privacy: .public) stamped=\(queued != nil, privacy: .public) — calling playerState.play")
             playerState.play(video: queued ?? video)
         }
     }

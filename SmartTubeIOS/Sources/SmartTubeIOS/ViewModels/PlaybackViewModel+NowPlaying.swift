@@ -211,7 +211,7 @@ extension PlaybackViewModel {
             MPNowPlayingInfoPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.video.rawValue),
             MPNowPlayingInfoPropertyIsLiveStream: NSNumber(value: video.isLive),
             MPNowPlayingInfoPropertyElapsedPlaybackTime: NSNumber(value: currentTime),
-            MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: isPlaying ? Double(player.rate) : 0.0),
+            MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: publishablePlaybackRate),
         ]
         if let known = publishableDuration(for: video) {
             info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: known)
@@ -261,7 +261,7 @@ extension PlaybackViewModel {
 
     func updateNowPlayingPlayback() {
         nowPlayingInfoCache[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: currentTime)
-        nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? Double(player.rate) : 0.0)
+        nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: publishablePlaybackRate)
         // Keep the duration current: it starts as the catalogue value and is
         // replaced by AVPlayer's exact one once the item is ready (see
         // publishableDuration).
@@ -378,7 +378,38 @@ extension PlaybackViewModel {
         // it ever saw and only jumps when a seek forces a refresh. Traced in the
         // CarPlay simulator: the app wrote elapsed 246→308 with rate 1.0 every 3 s
         // while the screen sat frozen at 3:36 for a minute.
-        center.playbackState = info == nil ? .stopped : (isPlaying ? .playing : .paused)
+        //
+        // It must come from the PLAYER, not from `isPlaying`. `isPlaying` is an
+        // intent flag set the moment playback is requested, so deriving the state
+        // from it claimed ".playing" while the stream was still resolving — and
+        // because the system extrapolates the bar from (elapsed, rate), the bar
+        // then advanced smoothly for audio that was never running. That is the
+        // "bar moves but there is no sound" report: a bar that guesses instead of
+        // reporting. `actualPlaybackState` only says .playing when AVPlayer is
+        // actually rolling.
+        center.playbackState = info == nil ? .stopped : actualPlaybackState
+    }
+
+    /// What the player is *actually* doing, for MPNowPlayingInfoCenter.
+    ///
+    /// MediaPlayer has no "buffering" state, so a stall or a not-yet-resolved
+    /// stream reports `.paused`: the bar holds still and the head unit shows the
+    /// ▶ glyph, which is the truth — nothing is playing yet.
+    private var actualPlaybackState: MPNowPlayingPlaybackState {
+        switch player.timeControlStatus {
+        case .playing:                      return .playing
+        case .paused:                       return .paused
+        case .waitingToPlayAtSpecifiedRate: return .paused
+        @unknown default:                   return .paused
+        }
+    }
+
+    /// The rate to publish. Paired with `actualPlaybackState`: the system
+    /// extrapolates position as `elapsed + rate × wall-clock`, so publishing a
+    /// non-zero rate while the player is stalled is what makes the bar drift away
+    /// from reality. Zero unless audio is genuinely rolling.
+    var publishablePlaybackRate: Double {
+        player.timeControlStatus == .playing ? Double(player.rate) : 0
     }
 }
 #endif

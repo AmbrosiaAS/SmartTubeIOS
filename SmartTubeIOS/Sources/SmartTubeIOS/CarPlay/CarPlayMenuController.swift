@@ -9,9 +9,9 @@ import SmartTubeIOSCore
 /// Builds and drives the CarPlay template hierarchy:
 ///
 ///     Root list ── Now Playing ──────────► CPNowPlayingTemplate ─► Queue list
-///               ├─ Queue ───────────────► Queue list ─► jump + CPNowPlayingTemplate
+///               ├─ Watch Later ─────────► video list ─► play + CPNowPlayingTemplate
 ///               ├─ History ─────────────► video list ─► play + CPNowPlayingTemplate
-///               └─ Watch Later ─────────► video list ─► play + CPNowPlayingTemplate
+///               └─ Queue ───────────────► Queue list ─► jump + CPNowPlayingTemplate
 ///
 /// Only stock CPListTemplate / CPNowPlayingTemplate templates are used, so the
 /// whole UI is navigable with a rotary controller (e.g. Mazda MZD Connect's
@@ -211,7 +211,9 @@ final class CarPlayMenuController: NSObject {
             completion()
         }
 
-        return CPListSection(items: [nowPlaying, queue, history, watchLater])
+        // Order is the driver's preference: the two pick-a-video lists sit
+        // right under Now Playing so they are one knob step away; Queue last.
+        return CPListSection(items: [nowPlaying, watchLater, history, queue])
     }
 
     // MARK: - Video lists

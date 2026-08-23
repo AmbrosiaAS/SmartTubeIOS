@@ -47,6 +47,11 @@ struct AppEntry: App {
 
     init() {
         FirebaseApp.configure()
+        #if os(iOS)
+        // Uploads the previous session's remote-command log (CarPlay / lock-screen
+        // button diagnostics) and opens this session's file.
+        RemoteCommandDiagnostics.bootstrapSession()
+        #endif
         let settingsStore = SettingsStore()
         let poTokenProvider: (any PoTokenProvider)? = {
             if let url = settingsStore.settings.poTokenServiceURL {

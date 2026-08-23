@@ -4,6 +4,7 @@ import Testing
 @testable import SmartTubeIOSCore
 #if canImport(UIKit)
 import MediaPlayer
+import AVFoundation
 
 /// Tests for the remote-command wiring in setupRemoteCommandCenter() /
 /// updateNowPlayingInfo().
@@ -217,6 +218,87 @@ struct NowPlayingCommandsTests {
         vm.currentTime = 42
         vm.refreshNowPlayingElapsedTimeIfNeeded(now: .distantFuture)
         #expect(vm.nowPlayingInfoCache.isEmpty)
+    }
+
+    // MARK: - Remote-command ownership (RemoteCommandRegistry)
+
+    /// The old code called removeTarget(nil) from every VM's stop/suspend/deinit,
+    /// which stripped the *active* player's handlers whenever any other VM (e.g.
+    /// the Shorts player) was torn down mid-video. Removal must be owner-scoped.
+    @Test func staleOwnerCannotRemoveActiveHandlers() {
+        let registry = RemoteCommandRegistry.shared
+        registry.resetForTesting()
+
+        let first = PlaybackViewModel()
+        first.setupRemoteCommandCenter()
+        let second = PlaybackViewModel()
+        second.setupRemoteCommandCenter()
+
+        #expect(registry.owner == second.remoteOwner)
+        let installed = registry.installedCommandCount
+        #expect(installed == 10)
+
+        // A VM that no longer owns the handlers must not be able to remove them.
+        first.releaseRemoteCommands(reason: "test-stale")
+        #expect(registry.owner == second.remoteOwner)
+        #expect(registry.installedCommandCount == installed)
+
+        // The real owner can.
+        second.releaseRemoteCommands(reason: "test-owner")
+        #expect(registry.owner == nil)
+        #expect(registry.installedCommandCount == 0)
+        registry.resetForTesting()
+    }
+
+    /// Installing replaces the previous owner outright — the AVPlayer VM and the
+    /// TOS web player must never both answer a button.
+    @Test func installReplacesPreviousOwner() {
+        let registry = RemoteCommandRegistry.shared
+        registry.resetForTesting()
+        let a = PlaybackViewModel()
+        a.setupRemoteCommandCenter()
+        let b = PlaybackViewModel()
+        b.setupRemoteCommandCenter()
+        #expect(registry.owner == b.remoteOwner)
+        #expect(registry.installedCommandCount == 10)   // not 20
+        registry.resetForTesting()
+    }
+
+    // MARK: - Audio interruption
+
+    /// iOS can deliver `.began` twice in a row (seen on device, 8 ms apart). The
+    /// second arrives with isPlaying already false; it must not overwrite the
+    /// "was playing" flag, or the `.ended` auto-resume is skipped and the car
+    /// stays silent until the driver presses play.
+    @Test func doubleInterruptionBeganKeepsWasPlayingFlag() async throws {
+        let vm = PlaybackViewModel()
+        vm.isPlaying = true
+        func post(_ type: AVAudioSession.InterruptionType) {
+            NotificationCenter.default.post(
+                name: AVAudioSession.interruptionNotification,
+                object: AVAudioSession.sharedInstance(),
+                userInfo: [AVAudioSessionInterruptionTypeKey: type.rawValue])
+        }
+        post(.began)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(vm.isPlaying == false)
+        #expect(vm.wasPlayingBeforeInterruption == true)
+
+        post(.began)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(vm.wasPlayingBeforeInterruption == true)
+        #expect(vm.isHandlingAudioInterruption == true)
+    }
+
+    /// recordFailure attaches the most recent breadcrumbs and honours its cap.
+    @Test func failureReportsAreCapped() {
+        RemoteCommandDiagnostics.resetForTesting()
+        for i in 0..<(RemoteCommandDiagnostics.failureCap + 2) {
+            RemoteCommandDiagnostics.recordFailure(domain: "Test", code: i, message: "m\(i)")
+        }
+        #expect(RemoteCommandDiagnostics.failureCount == RemoteCommandDiagnostics.failureCap)
+        #expect(RemoteCommandDiagnostics.recent.count <= RemoteCommandDiagnostics.recentCap)
+        RemoteCommandDiagnostics.resetForTesting()
     }
 }
 #endif

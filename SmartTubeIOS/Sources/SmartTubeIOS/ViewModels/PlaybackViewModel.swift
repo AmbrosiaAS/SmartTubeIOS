@@ -321,6 +321,10 @@ public final class PlaybackViewModel {
     /// progress. Suppresses the rate-observer's stall detection/recovery so a
     /// deliberate interruption-pause isn't mistaken for a playback stall (#244).
     var isHandlingAudioInterruption: Bool = false
+    #if canImport(UIKit)
+    /// Identity used to own MPRemoteCommandCenter handlers (see RemoteCommandRegistry).
+    let remoteOwner = RemoteCommandRegistry.Owner(label: "AVPlayer")
+    #endif
     /// Captures `isPlaying` at the start of an audio interruption so playback can be
     /// resumed on `.ended` only if it was actually playing before the call (#244).
     var wasPlayingBeforeInterruption: Bool = false
@@ -518,17 +522,7 @@ public final class PlaybackViewModel {
         airPlayObserver?.invalidate()
         if let obs = audioSessionObserver { NotificationCenter.default.removeObserver(obs) }
         #if canImport(UIKit)
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
-        center.seekForwardCommand.removeTarget(nil)
-        center.seekBackwardCommand.removeTarget(nil)
+        RemoteCommandRegistry.releaseFromDeinit(owner: remoteOwner)
         #endif
     }
 

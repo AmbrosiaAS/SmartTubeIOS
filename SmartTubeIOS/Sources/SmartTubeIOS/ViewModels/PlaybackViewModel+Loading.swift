@@ -14,6 +14,9 @@ extension PlaybackViewModel {
 
     public func load(video: Video) {
         playerLog.notice("[load] load() called — id=\(video.id) currentVideo=\(self.currentVideo?.id ?? "nil") isLoading=\(self.isLoading) player.item=\(self.player.currentItem != nil)")
+        #if canImport(UIKit)
+        RemoteCommandDiagnostics.resetReportBudget(reason: "load \(video.id)")
+        #endif
         playerLog.notice("[benchmark] load started — videoId=\(video.id) title=\(video.title)")
         videoLoadStartedAt = Date()
         lastSuccessfulStreamType = "unknown"
@@ -311,18 +314,7 @@ extension PlaybackViewModel {
         updateNowPlayingPlayback()
         // Deregister from the global command center so a suspended VM never
         // handles lock screen Play while another VM is the active player.
-        RemoteCommandDiagnostics.log("commands deregistered (suspend) t=\(Int(currentTime))s")
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
-        center.seekForwardCommand.removeTarget(nil)
-        center.seekBackwardCommand.removeTarget(nil)
+        releaseRemoteCommands(reason: "suspend t=\(Int(currentTime))s")
         #endif
     }
 
@@ -1221,18 +1213,7 @@ extension PlaybackViewModel {
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = false
         clearNowPlayingInfo()
-        RemoteCommandDiagnostics.log("commands deregistered (stop)")
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
-        center.seekForwardCommand.removeTarget(nil)
-        center.seekBackwardCommand.removeTarget(nil)
+        releaseRemoteCommands(reason: "stop")
         #endif
         if let obs = audioSessionObserver {
             NotificationCenter.default.removeObserver(obs)

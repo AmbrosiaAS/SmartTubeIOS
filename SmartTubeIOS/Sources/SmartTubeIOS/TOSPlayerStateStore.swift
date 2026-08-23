@@ -198,6 +198,9 @@ public final class TOSPlayerStateStore {
         vm?.pause()
         vm?.saveProgress()
         vm?.clearNowPlayingInfo()
+        #if os(iOS)
+        vm?.releaseRemoteCommands(reason: "tosState.stop")
+        #endif
         vm?.onPlayNext = nil
         vm?.onPlayPrevious = nil
         vm = nil

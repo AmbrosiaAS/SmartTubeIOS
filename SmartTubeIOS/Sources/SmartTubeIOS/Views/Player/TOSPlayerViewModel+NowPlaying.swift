@@ -28,76 +28,79 @@ extension TOSPlayerViewModel {
 
     func setupRemoteCommandCenter() {
         tosNowPlayingLog.notice("[NowPlaying] setupRemoteCommandCenter() called")
+        // Owned through RemoteCommandRegistry (see PlaybackViewModel's version):
+        // installing replaces the AVPlayer VM's handlers, and only this instance
+        // can remove its own. Safe to call multiple times (every loadEmbed).
+        RemoteCommandDiagnostics.log("setupRemoteCommandCenter (TOS VM \(remoteOwner.shortDescription))")
         let center = MPRemoteCommandCenter.shared()
-        // Remove any existing targets first so this is safe to call multiple times
-        // (e.g. on every loadEmbed) without accumulating duplicate handlers —
-        // mirrors PlaybackViewModel.setupRemoteCommandCenter().
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
+        RemoteCommandRegistry.shared.install(owner: remoteOwner) { reg in
+            reg.add(center.playCommand) { [weak self] _ in
+                RemoteCommandDiagnostics.log("TOS play")
+                self?.play()
+                return .success
+            }
+            reg.add(center.pauseCommand) { [weak self] _ in
+                RemoteCommandDiagnostics.log("TOS pause")
+                self?.pause()
+                return .success
+            }
+            reg.add(center.togglePlayPauseCommand) { [weak self] _ in
+                guard let self else { return .success }
+                RemoteCommandDiagnostics.log("TOS togglePlayPause state=\(self.playerState)")
+                if self.playerState == .playing { self.pause() } else { self.play() }
+                return .success
+            }
+            center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
+            reg.add(center.skipForwardCommand) { [weak self] event in
+                guard let self else { return .success }
+                let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+                RemoteCommandDiagnostics.log("TOS skipForward interval=\(interval)s t=\(Int(self.currentTime))s")
+                self.seekRelative(seconds: interval)
+                return .success
+            }
+            center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
+            reg.add(center.skipBackwardCommand) { [weak self] event in
+                guard let self else { return .success }
+                let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+                RemoteCommandDiagnostics.log("TOS skipBackward interval=\(interval)s t=\(Int(self.currentTime))s")
+                self.seekRelative(seconds: -interval)
+                return .success
+            }
+            reg.add(center.changePlaybackPositionCommand) { [weak self] event in
+                guard let self,
+                      let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else { return .success }
+                RemoteCommandDiagnostics.log("TOS changePlaybackPosition to=\(Int(position))s from t=\(Int(self.currentTime))s")
+                self.pendingSeekTarget = position
+                self.currentTime = position
+                self.seekTo(position)
+                self.updateNowPlayingPlayback()
+                return .success
+            }
+            // Next/previous-track are ±15 s seeks, NOT video navigation — mirrors
+            // PlaybackViewModel.setupRemoteCommandCenter(): CarPlay steering-wheel
+            // skip buttons and AirPods presses arrive as these commands, and repeated
+            // presses must accumulate N × 15 s within the current video. Always
+            // enabled — a seek is valid even with no queue/history.
+            center.nextTrackCommand.isEnabled = true
+            reg.add(center.nextTrackCommand) { [weak self] _ in
+                guard let self else { return .success }
+                RemoteCommandDiagnostics.log("TOS nextTrack → +\(Int(remoteSkipInterval))s t=\(Int(self.currentTime))s")
+                self.seekRelative(seconds: remoteSkipInterval)
+                return .success
+            }
+            center.previousTrackCommand.isEnabled = true
+            reg.add(center.previousTrackCommand) { [weak self] _ in
+                guard let self else { return .success }
+                RemoteCommandDiagnostics.log("TOS previousTrack → -\(Int(remoteSkipInterval))s t=\(Int(self.currentTime))s")
+                self.seekRelative(seconds: -remoteSkipInterval)
+                return .success
+            }
+        }
+    }
 
-        center.playCommand.addTarget { [weak self] _ in
-            self?.play()
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            self?.pause()
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            guard let self else { return .success }
-            if self.playerState == .playing { self.pause() } else { self.play() }
-            return .success
-        }
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
-        center.skipForwardCommand.addTarget { [weak self] event in
-            guard let self else { return .success }
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
-            RemoteCommandDiagnostics.log("TOS skipForward interval=\(interval)s t=\(Int(self.currentTime))s")
-            self.seekRelative(seconds: interval)
-            return .success
-        }
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
-        center.skipBackwardCommand.addTarget { [weak self] event in
-            guard let self else { return .success }
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
-            RemoteCommandDiagnostics.log("TOS skipBackward interval=\(interval)s t=\(Int(self.currentTime))s")
-            self.seekRelative(seconds: -interval)
-            return .success
-        }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let self,
-                  let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else { return .success }
-            self.pendingSeekTarget = position
-            self.currentTime = position
-            self.seekTo(position)
-            self.updateNowPlayingPlayback()
-            return .success
-        }
-        // Next/previous-track are ±15 s seeks, NOT video navigation — mirrors
-        // PlaybackViewModel.setupRemoteCommandCenter(): CarPlay steering-wheel
-        // skip buttons and AirPods presses arrive as these commands, and repeated
-        // presses must accumulate N × 15 s within the current video. Always
-        // enabled — a seek is valid even with no queue/history.
-        center.nextTrackCommand.isEnabled = true
-        center.nextTrackCommand.addTarget { [weak self] _ in
-            guard let self else { return .success }
-            RemoteCommandDiagnostics.log("TOS nextTrack → +\(Int(remoteSkipInterval))s t=\(Int(self.currentTime))s")
-            self.seekRelative(seconds: remoteSkipInterval)
-            return .success
-        }
-        center.previousTrackCommand.isEnabled = true
-        center.previousTrackCommand.addTarget { [weak self] _ in
-            guard let self else { return .success }
-            RemoteCommandDiagnostics.log("TOS previousTrack → -\(Int(remoteSkipInterval))s t=\(Int(self.currentTime))s")
-            self.seekRelative(seconds: -remoteSkipInterval)
-            return .success
-        }
+    /// Removes this VM's remote-command handlers (only if it still owns them).
+    func releaseRemoteCommands(reason: String) {
+        RemoteCommandRegistry.shared.remove(owner: remoteOwner, reason: reason)
     }
 
     func updateNowPlayingInfo() {

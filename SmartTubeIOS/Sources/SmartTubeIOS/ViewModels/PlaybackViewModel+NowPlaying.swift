@@ -45,7 +45,16 @@ extension PlaybackViewModel {
                 playerLog.notice("[interruption] began — pausing player")
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.wasPlayingBeforeInterruption = self.isPlaying
+                    // The system can deliver `.began` twice in a row (seen on
+                    // device: two notifications 8 ms apart). The second one
+                    // runs with isPlaying already false, so capturing it here
+                    // would lose the "was playing" flag and the `.ended`
+                    // auto-resume would be skipped. Only capture on the first.
+                    if !self.isHandlingAudioInterruption {
+                        self.wasPlayingBeforeInterruption = self.isPlaying
+                    } else {
+                        RemoteCommandDiagnostics.log("interruption began again while already interrupted — keeping wasPlaying=\(self.wasPlayingBeforeInterruption)")
+                    }
                     self.isHandlingAudioInterruption = true
                     self.player.pause()
                     self.isPlaying = false
@@ -62,7 +71,9 @@ extension PlaybackViewModel {
                     } catch {
                         playerLog.error("[interruption] setActive failed: \(error.localizedDescription)")
                     }
-                    if options.contains(.shouldResume) && self.wasPlayingBeforeInterruption {
+                    let resuming = options.contains(.shouldResume) && self.wasPlayingBeforeInterruption
+                    RemoteCommandDiagnostics.log("interruption ended shouldResume=\(options.contains(.shouldResume)) wasPlaying=\(self.wasPlayingBeforeInterruption) → \(resuming ? "resuming" : "staying paused")")
+                    if resuming {
                         self.player.rate = Float(self.settings.playbackSpeed)
                         self.isPlaying = true
                         self.updateNowPlayingPlayback()
@@ -77,125 +88,121 @@ extension PlaybackViewModel {
     }
 
     func setupRemoteCommandCenter() {
+        // Handlers are owned through RemoteCommandRegistry: installing replaces
+        // the previous owner (so this VM and the TOS web player never both
+        // answer a button), and removal is owner-scoped (so a *different* VM
+        // being torn down can't strip these handlers while we are playing).
+        // Safe to call repeatedly (early in loadAsync AND at readyToPlay).
+        RemoteCommandDiagnostics.log("setupRemoteCommandCenter (AVPlayer VM \(remoteOwner.shortDescription))")
         let center = MPRemoteCommandCenter.shared()
-        // Remove any existing targets first so this function is safe to call
-        // multiple times (e.g. early in loadAsync AND at readyToPlay) without
-        // accumulating duplicate handlers.
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
-        center.seekForwardCommand.removeTarget(nil)
-        center.seekBackwardCommand.removeTarget(nil)
+        RemoteCommandRegistry.shared.install(owner: remoteOwner) { reg in
+            reg.add(center.playCommand) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("play at t=\(Int(currentTime))s")
+                    player.rate = Float(settings.playbackSpeed)
+                    isPlaying = true
+                    updateNowPlayingPlayback()
+                }
+                return .success
+            }
+            reg.add(center.pauseCommand) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("pause at t=\(Int(currentTime))s")
+                    player.pause()
+                    isPlaying = false
+                    updateNowPlayingPlayback()
+                }
+                return .success
+            }
+            reg.add(center.togglePlayPauseCommand) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("togglePlayPause at t=\(Int(currentTime))s")
+                    togglePlayPause()
+                }
+                return .success
+            }
+            center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
+            reg.add(center.skipForwardCommand) { [weak self] event in
+                let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("skipForward interval=\(interval)s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                    seekRelative(seconds: interval, remote: true)
+                }
+                return .success
+            }
+            center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
+            reg.add(center.skipBackwardCommand) { [weak self] event in
+                let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("skipBackward interval=\(interval)s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                    seekRelative(seconds: -interval, remote: true)
+                }
+                return .success
+            }
+            reg.add(center.changePlaybackPositionCommand) { [weak self] event in
+                let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime ?? 0
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("changePlaybackPosition to=\(Int(position))s from t=\(Int(currentTime))s")
+                    seek(to: position, remote: true)
+                }
+                return .success
+            }
+            // Next/previous-track are deliberately ±15 s seeks, NOT video navigation:
+            // CarPlay steering-wheel skip buttons (and AirPods presses) arrive as these
+            // commands, and in-car the wanted behavior is repeated presses accumulating
+            // N × 15 s within the current video. Always enabled — a seek is valid even
+            // when no queue/history exists (queue navigation remains available in-app).
+            center.nextTrackCommand.isEnabled = true
+            reg.add(center.nextTrackCommand) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("nextTrack → +\(Int(remoteSkipInterval))s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                    seekRelative(seconds: remoteSkipInterval, remote: true)
+                }
+                return .success
+            }
+            center.previousTrackCommand.isEnabled = true
+            reg.add(center.previousTrackCommand) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("previousTrack → -\(Int(remoteSkipInterval))s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
+                    seekRelative(seconds: -remoteSkipInterval, remote: true)
+                }
+                return .success
+            }
+            // Some head units deliver their seek buttons as seekForward/seekBackward
+            // (scan begin/end pairs) rather than skip or track commands. Treat "begin"
+            // as a single ±15 s skip; "end" is logged for diagnosis but ignored.
+            reg.add(center.seekForwardCommand) { [weak self] event in
+                let type = (event as? MPSeekCommandEvent)?.type
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("seekForward(\(type == .beginSeeking ? "begin" : "end")) t=\(Int(currentTime))s")
+                    if type == .beginSeeking { seekRelative(seconds: remoteSkipInterval, remote: true) }
+                }
+                return .success
+            }
+            reg.add(center.seekBackwardCommand) { [weak self] event in
+                let type = (event as? MPSeekCommandEvent)?.type
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    RemoteCommandDiagnostics.log("seekBackward(\(type == .beginSeeking ? "begin" : "end")) t=\(Int(currentTime))s")
+                    if type == .beginSeeking { seekRelative(seconds: -remoteSkipInterval, remote: true) }
+                }
+                return .success
+            }
+        }
+    }
 
-        RemoteCommandDiagnostics.log("setupRemoteCommandCenter (AVPlayer VM)")
-
-        center.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("play at t=\(Int(currentTime))s")
-                player.rate = Float(settings.playbackSpeed)
-                isPlaying = true
-                updateNowPlayingPlayback()
-            }
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("pause at t=\(Int(currentTime))s")
-                player.pause()
-                isPlaying = false
-                updateNowPlayingPlayback()
-            }
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("togglePlayPause at t=\(Int(currentTime))s")
-                togglePlayPause()
-            }
-            return .success
-        }
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
-        center.skipForwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("skipForward interval=\(interval)s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
-                seekRelative(seconds: interval)
-            }
-            return .success
-        }
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSkipInterval)]
-        center.skipBackwardCommand.addTarget { [weak self] event in
-            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? remoteSkipInterval
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("skipBackward interval=\(interval)s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
-                seekRelative(seconds: -interval)
-            }
-            return .success
-        }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime ?? 0
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("changePlaybackPosition to=\(Int(position))s from t=\(Int(currentTime))s")
-                seek(to: position)
-            }
-            return .success
-        }
-        // Next/previous-track are deliberately ±15 s seeks, NOT video navigation:
-        // CarPlay steering-wheel skip buttons (and AirPods presses) arrive as these
-        // commands, and in-car the wanted behavior is repeated presses accumulating
-        // N × 15 s within the current video. Always enabled — a seek is valid even
-        // when no queue/history exists (queue navigation remains available in-app).
-        center.nextTrackCommand.isEnabled = true
-        center.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("nextTrack → +\(Int(remoteSkipInterval))s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
-                seekRelative(seconds: remoteSkipInterval)
-            }
-            return .success
-        }
-        center.previousTrackCommand.isEnabled = true
-        center.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("previousTrack → -\(Int(remoteSkipInterval))s t=\(Int(currentTime))s pending=\(pendingSeekTarget.map { Int($0).description } ?? "nil")")
-                seekRelative(seconds: -remoteSkipInterval)
-            }
-            return .success
-        }
-        // Some head units deliver their seek buttons as seekForward/seekBackward
-        // (scan begin/end pairs) rather than skip or track commands. These were
-        // never registered, so such buttons silently did nothing. Treat "begin"
-        // as a single ±15 s skip; "end" is logged for diagnosis but ignored.
-        center.seekForwardCommand.addTarget { [weak self] event in
-            let type = (event as? MPSeekCommandEvent)?.type
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("seekForward(\(type == .beginSeeking ? "begin" : "end")) t=\(Int(currentTime))s")
-                if type == .beginSeeking { seekRelative(seconds: remoteSkipInterval) }
-            }
-            return .success
-        }
-        center.seekBackwardCommand.addTarget { [weak self] event in
-            let type = (event as? MPSeekCommandEvent)?.type
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                RemoteCommandDiagnostics.log("seekBackward(\(type == .beginSeeking ? "begin" : "end")) t=\(Int(currentTime))s")
-                if type == .beginSeeking { seekRelative(seconds: -remoteSkipInterval) }
-            }
-            return .success
-        }
+    /// Removes this VM's remote-command handlers (only if it still owns them).
+    func releaseRemoteCommands(reason: String) {
+        RemoteCommandRegistry.shared.remove(owner: remoteOwner, reason: reason)
     }
 
     func updateNowPlayingInfo() {

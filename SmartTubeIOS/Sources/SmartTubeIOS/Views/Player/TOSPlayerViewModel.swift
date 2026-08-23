@@ -73,6 +73,10 @@ final class TOSPlayerViewModel: NSObject {
     /// which lags until the next tick — mirrors PlaybackViewModel.pendingSeekTarget.
     /// Cleared by the tick handler once the reported time converges on it.
     var pendingSeekTarget: Double?
+    #if os(iOS)
+    /// Identity used to own MPRemoteCommandCenter handlers (see RemoteCommandRegistry).
+    let remoteOwner = RemoteCommandRegistry.Owner(label: "TOS")
+    #endif
     var isReady: Bool = false
     /// Non-nil when the player encounters an error that requires falling back.
     var playerError: TOSPlayerError? = nil
@@ -336,6 +340,11 @@ final class TOSPlayerViewModel: NSObject {
     }
 
     deinit {
+        #if os(iOS)
+        // Drop our remote-command handlers if we still own them (a later owner is
+        // left alone — see RemoteCommandRegistry).
+        RemoteCommandRegistry.releaseFromDeinit(owner: remoteOwner)
+        #endif
         // deinit is nonisolated even in a @MainActor class, and WKUserContentController
         // is main-actor-bound — hop over rather than touch it synchronously here. The
         // captured webView keeps the controller alive until the handler is detached.

@@ -71,6 +71,7 @@ extension TOSPlayerViewModel {
             sponsorTask = Task { await self.fetchSponsorSegments() }
             navigationTask = Task { await self.fetchRelatedVideos() }
             beginWatchtimeTracking()
+            restoreSavedPositionIfNeeded()
             // Apply the user's saved playback-speed preference — parity with
             // PlaybackViewModel+Loading's `player.rate = Float(settings.playbackSpeed)`
             // at load time. setPlaybackRate's JS bridge already existed (used by the
@@ -223,6 +224,29 @@ extension TOSPlayerViewModel {
         }
     }
 
+    /// Seeks to the saved watch position once per session. Driven by the "ready"
+    /// bridge message rather than a timed poll from the view, so a slow embed load
+    /// can't outlast it, and every vm — including ones created by swipe navigation,
+    /// for which TOSPlayerView's `.task` never re-ran — restores its own position.
+    private func restoreSavedPositionIfNeeded() {
+        guard isReady, !hasRestoredPosition else { return }
+        Task {
+            let local = await savedStateTask?.value
+            guard !hasRestoredPosition else { return }
+            guard let pos = VideoStateStore.resumePosition(local: local, serverProgress: serverWatchProgress, duration: duration) else {
+                // The server fallback needs a duration — if it isn't known yet, stay
+                // armed for the retry from setDurationIfNewlyKnown.
+                if duration > 0 || serverWatchProgress == nil { hasRestoredPosition = true }
+                return
+            }
+            hasRestoredPosition = true
+            // Don't yank playback back if the user already scrubbed somewhere.
+            guard currentTime < 5 else { return }
+            tosLog.notice("[resume] restoring position \(Int(pos))s for \(self.videoId, privacy: .public) (local=\(local != nil, privacy: .public))")
+            seekTo(pos)
+        }
+    }
+
     /// Sets `duration` and fires `tosplayer.durationknown` the first time a
     /// positive value becomes available — whether that happens on "ready"
     /// (duration already known) or later via "tick" (the common case: "ready"
@@ -232,6 +256,9 @@ extension TOSPlayerViewModel {
         let wasKnown = duration > 0
         duration = value
         guard !wasKnown else { return }
+        // "ready" can fire with duration still 0; the server-progress resume
+        // fallback needs it, so retry now that it's known.
+        restoreSavedPositionIfNeeded()
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("com.void.smarttube.tosplayer.durationknown" as CFString),

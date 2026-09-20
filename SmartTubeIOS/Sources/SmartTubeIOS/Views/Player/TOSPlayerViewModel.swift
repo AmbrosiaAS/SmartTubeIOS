@@ -168,6 +168,14 @@ final class TOSPlayerViewModel: NSObject {
     /// the same videos don't cycle back on repeated swipes.
     var seenVideoIds: Set<String> = []
     private let startTime: Double
+    /// YouTube's server-side watched fraction (`Video.watchProgress`) — the resume
+    /// fallback when nothing was saved locally. See `restoreSavedPositionIfNeeded()`.
+    let serverWatchProgress: Double?
+    /// Locally saved position, read in `startIfNeeded()` — i.e. before any tracker
+    /// checkpoint for this session can overwrite it.
+    var savedStateTask: Task<VideoStateStore.State?, Never>?
+    /// One-shot guard for `restoreSavedPositionIfNeeded()`.
+    var hasRestoredPosition = false
     /// Guards against re-triggering a skip within the same segment.
     /// Mutated by `checkSponsorSkip(at:)` in TOSPlayerViewModel+SponsorBlock.swift.
     var activeSkipEnd: Double? = nil
@@ -240,7 +248,7 @@ final class TOSPlayerViewModel: NSObject {
 
     // MARK: - Init
 
-    init(videoId: String, title: String = "", channelId: String? = nil, channelTitle: String = "", thumbnailURL: URL? = nil, playlistId: String? = nil, playlistIndex: Int? = nil, startTime: Double = 0, api: InnerTubeAPI) {
+    init(videoId: String, title: String = "", channelId: String? = nil, channelTitle: String = "", thumbnailURL: URL? = nil, playlistId: String? = nil, playlistIndex: Int? = nil, startTime: Double = 0, serverWatchProgress: Double? = nil, api: InnerTubeAPI) {
         self.videoId = videoId
         self.videoTitle = title
         self.channelId = channelId
@@ -249,6 +257,7 @@ final class TOSPlayerViewModel: NSObject {
         self.playlistId = playlistId
         self.playlistIndex = playlistIndex
         self.startTime = startTime
+        self.serverWatchProgress = serverWatchProgress
         self.api = api
         self.tracker = WatchtimeTracker(api: api)
         self.likeDislike = LikeDislikeController(
@@ -336,6 +345,8 @@ final class TOSPlayerViewModel: NSObject {
     func startIfNeeded() {
         guard !hasStartedLoading else { return }
         hasStartedLoading = true
+        let id = videoId
+        savedStateTask = Task { await VideoStateStore.shared.state(for: id) }
         loadEmbed(videoId: videoId, startTime: startTime)
     }
 

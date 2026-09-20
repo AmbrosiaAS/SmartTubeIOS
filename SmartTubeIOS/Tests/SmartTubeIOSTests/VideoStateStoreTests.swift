@@ -116,4 +116,36 @@ struct VideoStateStoreTests {
         #expect(stateA?.position == 30)
         #expect(stateB?.position == 60)
     }
+
+    // MARK: - Resume position (local, then server-progress fallback)
+
+    @Test("Local position wins over server progress")
+    func resumePrefersLocalPosition() async {
+        let store = makeStore()
+        await store.save(videoId: "abc12345678", position: 30, duration: 100)
+        let pos = await store.resumePosition(for: "abc12345678", serverProgress: 0.8, duration: 100)
+        #expect(pos == 30)
+    }
+
+    @Test("Falls back to server progress when nothing is saved locally")
+    func resumeFallsBackToServerProgress() async {
+        let store = makeStore()
+        let pos = await store.resumePosition(for: "abc12345678", serverProgress: 0.4, duration: 600)
+        #expect(pos == 240)
+    }
+
+    @Test("No local state and no server progress starts from the beginning")
+    func resumeNilWithoutAnyProgress() async {
+        let store = makeStore()
+        let pos = await store.resumePosition(for: "abc12345678", serverProgress: nil, duration: 600)
+        #expect(pos == nil)
+    }
+
+    @Test("Server progress is ignored when finished, near the start, or duration is unknown")
+    func resumeServerProgressBounds() {
+        #expect(VideoStateStore.resumePosition(local: nil, serverProgress: 1.0, duration: 600) == nil)
+        #expect(VideoStateStore.resumePosition(local: nil, serverProgress: 0.95, duration: 600) == nil)
+        #expect(VideoStateStore.resumePosition(local: nil, serverProgress: 0.005, duration: 600) == nil)
+        #expect(VideoStateStore.resumePosition(local: nil, serverProgress: 0.5, duration: 0) == nil)
+    }
 }

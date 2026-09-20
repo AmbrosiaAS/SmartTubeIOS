@@ -576,6 +576,16 @@ extension PlaybackViewModel {
         // backgrounded, frame-accurate seeking, decent AAC audio. On any miss it falls
         // through to the standard exhaustiveRetry chain so reliability never regresses.
         if carPlayActive {
+            // This branch returns before the standard path's position restore below,
+            // so arm it here — attemptURL seeks to it on readyToPlay.
+            savedPositionToRestore = await VideoStateStore.shared.resumePosition(
+                for: video.id,
+                serverProgress: video.watchProgress,
+                duration: video.duration ?? 0
+            )
+            if let pos = savedPositionToRestore {
+                playerLog.notice("[CarPlay] Restoring position \(Int(pos))s for \(video.id)")
+            }
             if await carPlayMuxedFirstLoad(video: video) { return }
             playerLog.notice("[CarPlay] muxed-first path did not play — running standard exhaustiveRetry")
             await exhaustiveRetry(video: video, originalError: nil, playerInfo: nil, cached: nil)
@@ -736,8 +746,13 @@ extension PlaybackViewModel {
             }
 
             // Restore saved watch position (mirrors VideoStateController)
-            let savedState = await VideoStateStore.shared.state(for: video.id)
-            if let pos = savedState?.position, pos > 5 {
+            // Falls back to YouTube's server-side progress (the red bar on history
+            // cards) when nothing was saved locally — see resumePosition(for:...).
+            if let pos = await VideoStateStore.shared.resumePosition(
+                for: video.id,
+                serverProgress: video.watchProgress,
+                duration: info.video.duration ?? video.duration ?? 0
+            ) {
                 savedPositionToRestore = pos
                 playerLog.notice("Restoring position \(Int(pos))s for \(video.id)")
             }

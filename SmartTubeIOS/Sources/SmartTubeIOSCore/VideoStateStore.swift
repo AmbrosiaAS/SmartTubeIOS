@@ -59,6 +59,25 @@ public actor VideoStateStore: UserDefaultsBackedStore {
         states[videoId]
     }
 
+    /// Position to resume `videoId` from, or nil to start from the beginning.
+    ///
+    /// The locally saved position wins. When there is none — the video was watched
+    /// on another device, or before this install — falls back to YouTube's own
+    /// `serverProgress` (`Video.watchProgress`, the fraction behind the red bar on
+    /// history thumbnails), so a card that shows progress always resumes from it.
+    public func resumePosition(for videoId: String, serverProgress: Double?, duration: TimeInterval) -> TimeInterval? {
+        Self.resumePosition(local: states[videoId], serverProgress: serverProgress, duration: duration)
+    }
+
+    /// Pure form of `resumePosition(for:serverProgress:duration:)`. Applies the same
+    /// bounds as `save` (> 5 s in, < 95 % watched) to the server-derived position.
+    public static func resumePosition(local: State?, serverProgress: Double?, duration: TimeInterval) -> TimeInterval? {
+        if let pos = local?.position, pos > 5 { return pos }
+        guard let fraction = serverProgress, fraction > 0, fraction < 0.95, duration > 1 else { return nil }
+        let pos = fraction * duration
+        return pos > 5 ? pos : nil
+    }
+
     /// Persists watch position. Automatically prunes entries near the start
     /// (< 5 s) or near the end (> 95 %) — mirrors Android's RESTORE_POSITION_PERCENTS.
     public func save(videoId: String, position: TimeInterval, duration: TimeInterval) {

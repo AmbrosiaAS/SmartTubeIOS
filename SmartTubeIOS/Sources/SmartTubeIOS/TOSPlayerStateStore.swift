@@ -118,7 +118,7 @@ public final class TOSPlayerStateStore {
         }
 
         seenVideoIds.insert(video.id)
-        let newVM = TOSPlayerViewModel(videoId: video.id, title: video.title, channelId: video.channelId, channelTitle: video.channelTitle, thumbnailURL: video.thumbnailURL, playlistId: video.playlistId, playlistIndex: video.playlistIndex, startTime: 0, api: api)
+        let newVM = TOSPlayerViewModel(videoId: video.id, title: video.title, channelId: video.channelId, channelTitle: video.channelTitle, thumbnailURL: video.thumbnailURL, playlistId: video.playlistId, playlistIndex: video.playlistIndex, startTime: 0, serverWatchProgress: video.watchProgress, api: api)
         newVM.seenVideoIds = seenVideoIds
         newVM.setNavigationContext(hasPrevious: !history.isEmpty)
         // Wire swipe-navigation callbacks here (not in TOSPlayerView.onAppear) so

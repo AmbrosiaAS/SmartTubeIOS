@@ -94,12 +94,12 @@ public struct TOSPlayerView: View {
         self.video = video
         self.onFallback = onFallback
         #if os(macOS)
-        // startTime defaults to 0; saved position is restored asynchronously
-        // in .task once the view has appeared (see body below).
+        // startTime defaults to 0; the vm restores the saved position itself once
+        // the embed reports "ready" (TOSPlayerViewModel.restoreSavedPositionIfNeeded).
         // `api` is threaded through so TOSPlayerViewModel can drive a WatchtimeTracker
         // (history/position-checkpoint parity with the standard PlayerView — see
         // TOSPlayerViewModel.saveProgress()).
-        _vm = State(initialValue: TOSPlayerViewModel(videoId: video.id, title: video.title, channelId: video.channelId, channelTitle: video.channelTitle, thumbnailURL: video.thumbnailURL, startTime: 0, api: api))
+        _vm = State(initialValue: TOSPlayerViewModel(videoId: video.id, title: video.title, channelId: video.channelId, channelTitle: video.channelTitle, thumbnailURL: video.thumbnailURL, startTime: 0, serverWatchProgress: video.watchProgress, api: api))
         #endif
         // On iOS, TOSPlayerStateStore.play(video:api:) already created the vm
         // before presenting this view. Nothing to do here.
@@ -308,20 +308,6 @@ public struct TOSPlayerView: View {
             dismiss()
         }
         #endif
-        // Restore saved watch position asynchronously.
-        // We seek once the player reports .playing or .paused (i.e. after onReady fires)
-        // so the IFrame API is ready to accept seekTo() calls.
-        .task {
-            let saved = await VideoStateStore.shared.state(for: video.id)?.position ?? 0
-            guard saved > 1 else { return }
-            // Poll briefly for player readiness before seeking.
-            for _ in 0..<20 {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                guard vm.isReady else { continue }
-                vm.seekTo(saved)
-                return
-            }
-        }
         // Watch for fatal IFrame errors → fall back to standard player.
         // Do NOT clear deepLinkedVideo here — RootView uses tosPlayerFallbackVideoId
         // (set by onFallback()) to switch from TOSPlayerView to PlayerView while
